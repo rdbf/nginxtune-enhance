@@ -61,28 +61,43 @@ The `config.json` file controls all features through boolean toggles:
 
 All features are disabled by default except `config_fixes`. Enable features by setting them to `true` in the configuration file.
 
-## Installation & Usage
+## Installation and Usage
 
-### Setup
+### Requirements
+- Root access required
+- Enhance hosting environment
+- Nginx with HTTP/3 support compiled in
+
+### Quick Install
 ```bash
-# Make script executable
-chmod +x /opt/nginxtune-enhance/nginxtune-enhance
+# Clone the repository
+cd /opt
+git clone https://github.com/rdbf/nginxtune-enhance.git
 
-# Configure features (edit as needed)
-nano /opt/nginxtune-enhance/config.json
-```
+# Test the script
+/opt/nginxtune-enhance/nginxtune-enhance
 
-### Automated Execution
-Add to crontab for automatic management:
-```bash
+# Add to cron for automatic management
 crontab -e
 
-# Add this line to run every minute
+# Add these line to run every minute:
+
+# Run nginxtune-enhance
 * * * * * /opt/nginxtune-enhance/nginxtune-enhance >/dev/null 2>&1
 ```
 
-### Manual Execution
+### Updates
 ```bash
+cd /opt/nginxtune-enhance
+git pull origin main
+```
+
+### Verification
+```bash
+# Check logs for operation status
+tail -f /var/log/nginxtune-enhance.log
+
+# Manual test run
 /opt/nginxtune-enhance/nginxtune-enhance
 ```
 

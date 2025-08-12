@@ -1,9 +1,9 @@
 {
   "features": {
     "config_fixes": true,
-    "http3_enable": false,
-    "ssl_upgrade": false,
-    "server_hardening": false,
-    "cms_protection": false
+    "http3_enable": true,
+    "ssl_upgrade": true,
+    "server_hardening": true,
+    "cms_protection": true
   }
 }
