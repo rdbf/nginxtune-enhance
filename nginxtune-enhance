@@ -1,0 +1,622 @@
+#!/usr/bin/env python3
+
+"""
+Version: 0.3
+Author: rdbf
+
+HTTP/3 configuration management script for Enhance Nginx
+Provides unified add/remove logic for HTTP/3 and related features based on JSON configuration.
+
+Features managed:
+- Configuration fixes (IPv6:80 listener, reuseport for default.conf)
+- Listen directives (HTTP/2, HTTP/3/QUIC listeners)
+- Protocol directives (http2 on, http3 on, quic_gso on)
+- Alt-Svc headers (server-level and PHP location blocks)
+- Modular override includes (SSL, hardening, CMS protection)
+
+The script analyzes current configuration state, determines required changes,
+and applies modifications while preserving Enhance's formatting and structure.
+All changes are reversible through JSON configuration toggles.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+import json
+from datetime import datetime
+from pathlib import Path
+
+# Configuration
+ALT_SVC_HEADER = 'h3=":443"; ma=86400'
+SITES_DIR = "/etc/nginx/sites-enabled"
+LOG_FILE = "/var/log/nginxtune-enhance.log"
+BACKUP_DIR = f"/etc/nginx/backups/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+CONFIG_FILE = "/opt/nginxtune-enhance/config.json"
+
+def load_config():
+    """Load feature toggles from config.json with fallback defaults"""
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {'features': {
+            'config_fixes': True,
+            'http3_enable': False,
+            'ssl_upgrade': False,
+            'server_hardening': False,
+            'cms_protection': False
+        }}
+    except Exception as e:
+        log_message(f"ERROR: Failed to load config.json: {e}", True)
+        sys.exit(2)
+
+def generate_includes(config):
+    """Generate include statements for enabled override features"""
+    includes = []
+    features = config.get('features', {})
+    
+    if features.get('ssl_upgrade', False):
+        includes.append('include /opt/nginxtune-enhance/overrides/ssl.conf')
+    if features.get('server_hardening', False):
+        includes.append('include /opt/nginxtune-enhance/overrides/hardening.conf')
+    if features.get('cms_protection', False):
+        includes.append('include /opt/nginxtune-enhance/overrides/cms.conf')
+    
+    return includes
+
+def log_message(message, is_error=False):
+    """Log message with timestamp to log file"""
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    log_entry = f"{timestamp} - {message}\n"
+    
+    try:
+        with open(LOG_FILE, 'a') as f:
+            f.write(log_entry)
+    except PermissionError as e:
+        if is_error:
+            print(f"Permission denied writing to log: {e}", file=sys.stderr)
+    except OSError as e:
+        if is_error:
+            print(f"Filesystem error writing to log: {e}", file=sys.stderr)
+    except Exception as e:
+        if is_error:
+            print(f"Unexpected error writing to log: {e}", file=sys.stderr)
+    
+    if is_error:
+        print(log_entry.strip(), file=sys.stderr)
+
+def detect_indentation_safe(lines, line_index):
+    """Detect line indentation with fallback"""
+    try:
+        current_line = lines[line_index]
+        indentation = len(current_line) - len(current_line.lstrip())
+        return ' ' * indentation
+    except:
+        return '    '  # 4 spaces default
+
+def detect_php_indentation_safe(lines, line_index):
+    """Detect PHP location block indentation with fallback"""
+    try:
+        current_line = lines[line_index]
+        base_indent = len(current_line) - len(current_line.lstrip())
+        return ' ' * (base_indent + 4)
+    except:
+        return '                '  # 16 spaces default
+
+def create_backup():
+    """Create backup directory and copy configs"""
+    try:
+        Path(BACKUP_DIR).mkdir(parents=True, exist_ok=True)
+        
+        for conf_file in Path(SITES_DIR).glob("*.conf"):
+            shutil.copy2(conf_file, BACKUP_DIR)
+        
+        log_message(f"Backup created: {BACKUP_DIR}")
+        return True
+    except Exception as e:
+        log_message(f"ERROR: Failed to create backup: {e}", True)
+        return False
+
+def restore_backup():
+    """Restore from backup directory"""
+    try:
+        for backup_file in Path(BACKUP_DIR).glob("*.conf"):
+            original_path = Path(SITES_DIR) / backup_file.name
+            shutil.copy2(backup_file, original_path)
+        
+        log_message(f"Restored from backup: {BACKUP_DIR}")
+        return True
+    except Exception as e:
+        log_message(f"ERROR: Failed to restore backup: {e}", True)
+        return False
+
+def test_nginx_config():
+    """Test nginx configuration"""
+    try:
+        result = subprocess.run(['nginx', '-t'], capture_output=True, text=True)
+        return result.returncode == 0, result.stderr
+    except Exception as e:
+        return False, str(e)
+
+def reload_nginx():
+    """Reload nginx service"""
+    try:
+        result = subprocess.run(['systemctl', 'reload', 'nginx'], capture_output=True, text=True)
+        return result.returncode == 0
+    except Exception as e:
+        log_message(f"ERROR: Failed to reload nginx: {e}", True)
+        return False
+
+def analyze_config(file_path, config):
+    """Analyze configuration file and determine required actions"""
+    filename = Path(file_path).name
+    is_default = filename == "default.conf"
+    
+    # Skip 000- files
+    if filename.startswith('000-'):
+        return None
+    
+    try:
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+    except Exception as e:
+        log_message(f"ERROR: Failed to read {file_path}: {e}", True)
+        return None
+    
+    features = config.get('features', {})
+    
+    # Check current state
+    has_server_name = any('server_name' in line and not line.strip().startswith('#') for line in lines)
+    has_php_location = any(r'location ~ \.php$' in line for line in lines)
+    
+    # Check for Alt-Svc headers
+    server_header_exists = False
+    php_header_exists = False
+    
+    if has_server_name:
+        for i, line in enumerate(lines):
+            if 'server_name' in line and not line.strip().startswith('#'):
+                for j in range(i + 1, len(lines)):
+                    next_stripped = lines[j].strip()
+                    if next_stripped:
+                        if next_stripped == 'gzip on;':
+                            break
+                        if f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in lines[j]:
+                            server_header_exists = True
+                            break
+                break
+    
+    if has_php_location:
+        in_php_block = False
+        for line in lines:
+            if r'location ~ \.php$' in line:
+                in_php_block = True
+            elif in_php_block and "}" in line and line.strip() == "}":
+                in_php_block = False
+            elif in_php_block and f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line:
+                php_header_exists = True
+                break
+    
+    # Check for includes - separate manageable from unwanted
+    current_includes = []
+    unwanted_includes = []
+    manageable_includes = [
+        'include /opt/nginxtune-enhance/overrides/ssl.conf',
+        'include /opt/nginxtune-enhance/overrides/hardening.conf',
+        'include /opt/nginxtune-enhance/overrides/cms.conf'
+    ]
+    
+    for line in lines:
+        if 'include /opt/nginxtune-enhance/' in line:
+            include_line = line.strip().rstrip(';')
+            if include_line in manageable_includes:
+                current_includes.append(include_line)
+            else:
+                unwanted_includes.append(include_line)
+    
+    expected_includes = generate_includes(config)
+    
+    # Check listen directives and protocol settings
+    has_listen_http2 = any('listen' in line and 'http2' in line for line in lines)
+    has_http2_directive = any(line.strip() == 'http2 on;' for line in lines)
+    has_http3_directive = any(line.strip() == 'http3 on;' for line in lines)
+    has_quic_gso = any(line.strip() == 'quic_gso on;' for line in lines)
+    has_quic_listeners = any('listen' in line and 'quic' in line for line in lines)
+    has_ipv6_http = any('listen [::]:80' in line for line in lines)
+    has_reuseport = any('reuseport' in line for line in lines)
+    
+    return {
+        'filename': filename,
+        'is_default': is_default,
+        'has_server_name': has_server_name,
+        'has_php_location': has_php_location,
+        
+        # Alt-Svc header actions
+        'server_header_action': get_action(features.get('http3_enable', False) and not is_default and has_server_name, server_header_exists),
+        'php_header_action': get_action(features.get('http3_enable', False) and not is_default and has_php_location, php_header_exists),
+        
+        # Listen directive actions
+        'listen_http2_action': get_action(not features.get('http3_enable', False), has_listen_http2),  # Add http2 when http3 disabled
+        'ipv6_http_action': get_action(features.get('config_fixes', False) and is_default, has_ipv6_http) if is_default else 'SKIP',
+        'reuseport_action': get_action(features.get('config_fixes', False) and is_default, has_reuseport) if is_default else 'SKIP',
+        
+        # Protocol directive actions  
+        'http2_directive_action': get_action(features.get('http3_enable', False), has_http2_directive),
+        'http3_directive_action': get_action(features.get('http3_enable', False), has_http3_directive),
+        'quic_gso_action': get_action(features.get('http3_enable', False), has_quic_gso),
+        'quic_listeners_action': get_action(features.get('http3_enable', False), has_quic_listeners),
+        
+        # Include actions (only for site configs, not default.conf)
+        'current_includes': current_includes,
+        'expected_includes': expected_includes,
+        'unwanted_includes': unwanted_includes,
+        'includes_action': 'UPDATE' if (not is_default and (set(current_includes) != set(expected_includes) or unwanted_includes)) else 'SKIP'
+    }
+
+def get_action(should_have, currently_has):
+    """Determine ADD/REMOVE/SKIP action based on desired vs current state"""
+    if should_have and not currently_has:
+        return 'ADD'
+    elif not should_have and currently_has:
+        return 'REMOVE'
+    else:
+        return 'SKIP'
+
+def process_default_conf(lines, analysis):
+    """Process default.conf with configuration fixes and protocol settings"""
+    new_lines = []
+    server_header_added = False
+    http2_added = False
+    
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        base_indent = detect_indentation_safe(lines, i)
+        
+        # Configuration fixes for listen directives
+        if stripped.startswith('listen 80 default_server'):
+            if analysis['reuseport_action'] == 'ADD' and 'reuseport' not in stripped:
+                new_lines.append(f'{base_indent}listen 80 default_server reuseport;\n')
+            elif analysis['reuseport_action'] == 'REMOVE' and 'reuseport' in stripped:
+                new_lines.append(f'{base_indent}listen 80 default_server;\n')
+            else:
+                new_lines.append(line)
+            # Add IPv6 HTTP listener if enabled
+            if analysis['ipv6_http_action'] == 'ADD':
+                if analysis['reuseport_action'] == 'ADD':
+                    new_lines.append(f'{base_indent}listen [::]:80 default_server reuseport;\n')
+                else:
+                    new_lines.append(f'{base_indent}listen [::]:80 default_server;\n')
+        
+        # Remove IPv6:80 listener if disabled
+        elif stripped.startswith('listen [::]:80 default_server') and analysis['ipv6_http_action'] == 'REMOVE':
+            continue
+        
+        elif stripped.startswith('listen 443 ssl') and 'default_server' in stripped:
+            # Manage HTTP/2 and reuseport for HTTPS listeners
+            if analysis['listen_http2_action'] == 'ADD' and 'http2' not in stripped:
+                new_line = stripped.replace('ssl', 'ssl http2')
+            elif analysis['listen_http2_action'] == 'REMOVE' and 'http2' in stripped:
+                new_line = stripped.replace(' http2', '')
+            else:
+                new_line = stripped
+            
+            # Manage reuseport setting
+            if analysis['reuseport_action'] == 'ADD' and 'reuseport' not in new_line:
+                new_line = new_line.rstrip(';') + ' reuseport;'
+            elif analysis['reuseport_action'] == 'REMOVE' and 'reuseport' in new_line:
+                new_line = new_line.replace(' reuseport', '')
+            new_lines.append(f'{base_indent}{new_line}\n')
+            
+        elif stripped.startswith('listen [::]:443 ssl') and 'default_server' in stripped:
+            # Manage HTTP/2 and reuseport for IPv6 HTTPS listeners
+            if analysis['listen_http2_action'] == 'ADD' and 'http2' not in stripped:
+                new_line = stripped.replace('ssl', 'ssl http2')
+            elif analysis['listen_http2_action'] == 'REMOVE' and 'http2' in stripped:
+                new_line = stripped.replace(' http2', '')
+            else:
+                new_line = stripped
+            
+            # Manage reuseport setting
+            if analysis['reuseport_action'] == 'ADD' and 'reuseport' not in new_line:
+                new_line = new_line.rstrip(';') + ' reuseport;'
+            elif analysis['reuseport_action'] == 'REMOVE' and 'reuseport' in new_line:
+                new_line = new_line.replace(' reuseport', '')
+            new_lines.append(f'{base_indent}{new_line}\n')
+            
+            # Add QUIC listeners when HTTP/3 enabled
+            if analysis['quic_listeners_action'] == 'ADD':
+                if analysis['reuseport_action'] == 'ADD':
+                    new_lines.append(f'{base_indent}listen 443 quic default_server reuseport;\n')
+                    new_lines.append(f'{base_indent}listen [::]:443 quic default_server reuseport;\n')
+                else:
+                    new_lines.append(f'{base_indent}listen 443 quic default_server;\n')
+                    new_lines.append(f'{base_indent}listen [::]:443 quic default_server;\n')
+        
+        # Remove QUIC listeners when HTTP/3 disabled
+        elif ((stripped.startswith('listen 443 quic') or stripped.startswith('listen [::]:443 quic')) and 
+              analysis['quic_listeners_action'] == 'REMOVE'):
+            continue
+        
+        # Remove protocol directives when disabled
+        elif (stripped in ['http2 on;', 'http3 on;', 'quic_gso on;'] and 
+              (analysis['http2_directive_action'] == 'REMOVE' or 
+               analysis['http3_directive_action'] == 'REMOVE' or 
+               analysis['quic_gso_action'] == 'REMOVE')):
+            continue
+        
+        # Add protocol directives after server_name
+        elif (stripped.startswith('server_name') and not stripped.startswith('#') and not http2_added):
+            new_lines.append(line)
+            # Add enabled protocol directives
+            if analysis['http2_directive_action'] == 'ADD':
+                new_lines.append(f'{base_indent}http2 on;\n')
+            if analysis['http3_directive_action'] == 'ADD':
+                new_lines.append(f'{base_indent}http3 on;\n')
+            if analysis['quic_gso_action'] == 'ADD':
+                new_lines.append(f'{base_indent}quic_gso on;\n')
+            http2_added = True
+            continue
+        else:
+            new_lines.append(line)
+    
+    return new_lines
+
+def process_site_conf(lines, analysis):
+    """Process site configuration files with HTTP/3 and header management"""
+    new_lines = []
+    server_header_added = False
+    php_header_added = False
+    http2_added = False
+    includes_processed = False
+    
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        base_indent = detect_indentation_safe(lines, i)
+        
+        # Manage HTTPS listen directives
+        if stripped in ['listen 443 ssl http2;', 'listen [::]:443 ssl http2;', 'listen 443 ssl;', 'listen [::]:443 ssl;']:
+            # Handle HTTP/2 protocol setting
+            if analysis['listen_http2_action'] == 'ADD' and 'http2' not in stripped:
+                new_line = stripped.replace('ssl;', 'ssl http2;')
+            elif analysis['listen_http2_action'] == 'REMOVE' and 'http2' in stripped:
+                new_line = stripped.replace(' http2', '')
+            else:
+                new_line = stripped
+            
+            new_lines.append(f'{base_indent}{new_line}\n')
+            # Add QUIC listeners after IPv6 HTTPS listener
+            if stripped in ['listen [::]:443 ssl http2;', 'listen [::]:443 ssl;'] and analysis['quic_listeners_action'] == 'ADD':
+                new_lines.append(f'{base_indent}listen 443 quic;\n')
+                new_lines.append(f'{base_indent}listen [::]:443 quic;\n')
+        
+        # Remove QUIC listeners when HTTP/3 disabled
+        elif ((stripped.startswith('listen 443 quic') or stripped.startswith('listen [::]:443 quic')) and 
+              analysis['quic_listeners_action'] == 'REMOVE'):
+            continue
+        
+        # Remove Alt-Svc headers when HTTP/3 disabled
+        elif (f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line and 
+              (analysis['server_header_action'] == 'REMOVE' or analysis['php_header_action'] == 'REMOVE')):
+            continue
+        
+        # Remove protocol directives when disabled
+        elif (stripped in ['http2 on;', 'http3 on;', 'quic_gso on;'] and 
+              (analysis['http2_directive_action'] == 'REMOVE' or 
+               analysis['http3_directive_action'] == 'REMOVE' or 
+               analysis['quic_gso_action'] == 'REMOVE')):
+            continue
+        
+        # Remove unwanted includes (legacy files and unknown includes)
+        elif 'include /opt/nginxtune-enhance/' in line and analysis['includes_action'] == 'UPDATE':
+            include_line = line.strip().rstrip(';')
+            if include_line in analysis['unwanted_includes']:
+                continue  # Remove unwanted includes
+            elif include_line not in analysis['expected_includes']:
+                continue  # Remove current includes that shouldn't be there
+            else:
+                new_lines.append(line)  # Keep includes that should remain
+        
+        # Add Alt-Svc header to PHP location blocks
+        elif (r'location ~ \.php$' in stripped and '{' in stripped 
+              and analysis['php_header_action'] == 'ADD' and not php_header_added):
+            new_lines.append(line)
+            php_indent = detect_php_indentation_safe(lines, i)
+            new_lines.append(f"{php_indent}add_header Alt-Svc '{ALT_SVC_HEADER}';\n")
+            php_header_added = True
+        
+        # Add server-level Alt-Svc header and protocol directives
+        elif (stripped.startswith('server_name') and not stripped.startswith('#') 
+              and not server_header_added and not http2_added):
+            new_lines.append(line)
+            # Add Alt-Svc header before gzip directive
+            if analysis['server_header_action'] == 'ADD':
+                for j in range(i + 1, len(lines)):
+                    next_stripped = lines[j].strip()
+                    if next_stripped:
+                        if next_stripped == 'gzip on;':
+                            new_lines.append(f"{base_indent}add_header Alt-Svc '{ALT_SVC_HEADER}';\n")
+                            server_header_added = True
+                        break
+            # Add enabled protocol directives
+            if analysis['http2_directive_action'] == 'ADD':
+                new_lines.append(f'{base_indent}http2 on;\n')
+            if analysis['http3_directive_action'] == 'ADD':
+                new_lines.append(f'{base_indent}http3 on;\n')
+            if analysis['quic_gso_action'] == 'ADD':
+                new_lines.append(f'{base_indent}quic_gso on;\n')
+            http2_added = True
+            continue
+        
+        # Add missing override includes after vhost_includes
+        elif ('include vhost_includes/' in line and analysis['includes_action'] == 'UPDATE' 
+              and not includes_processed):
+            new_lines.append(line)
+            # Add expected includes that aren't already present
+            for include_line in analysis['expected_includes']:
+                if include_line not in analysis['current_includes']:
+                    new_lines.append(f'{base_indent}{include_line};\n')
+            includes_processed = True
+        else:
+            new_lines.append(line)
+    
+    return new_lines
+
+def process_nginx_config(file_path, analysis):
+    """Process nginx configuration file and apply required changes"""
+    if analysis is None:
+        return False, "skipped"
+    
+    filename = analysis['filename']
+    is_default = analysis['is_default']
+    
+    # Check if any updates are needed
+    needs_updates = any([
+        analysis['server_header_action'] != 'SKIP',
+        analysis['php_header_action'] != 'SKIP',
+        analysis['listen_http2_action'] != 'SKIP',
+        analysis['ipv6_http_action'] != 'SKIP',
+        analysis['reuseport_action'] != 'SKIP',
+        analysis['http2_directive_action'] != 'SKIP',
+        analysis['http3_directive_action'] != 'SKIP',
+        analysis['quic_gso_action'] != 'SKIP',
+        analysis['quic_listeners_action'] != 'SKIP',
+        analysis['includes_action'] != 'SKIP'
+    ])
+    
+    if not needs_updates:
+        return False, "up to date"
+    
+    try:
+        with open(file_path, 'r') as f:
+            lines = f.readlines()
+    except Exception as e:
+        log_message(f"ERROR: Failed to read {file_path}: {e}", True)
+        return False, f"read error: {e}"
+    
+    # Apply appropriate updates
+    if is_default:
+        new_lines = process_default_conf(lines, analysis)
+    else:
+        new_lines = process_site_conf(lines, analysis)
+    
+    # Build change description
+    changes = []
+    if analysis['listen_http2_action'] != 'SKIP' or analysis['ipv6_http_action'] != 'SKIP' or analysis['quic_listeners_action'] != 'SKIP':
+        changes.append("listen directives")
+    if analysis['server_header_action'] != 'SKIP' or analysis['php_header_action'] != 'SKIP':
+        changes.append("Alt-Svc headers")
+    if analysis['http2_directive_action'] != 'SKIP' or analysis['http3_directive_action'] != 'SKIP' or analysis['quic_gso_action'] != 'SKIP':
+        changes.append("http2/3/gso")
+    if analysis['includes_action'] != 'SKIP':
+        changes.append("overrides includes")
+    if analysis['reuseport_action'] != 'SKIP':
+        changes.append("reuseport")
+    
+    change_desc = f"updated {', '.join(changes)}"
+    
+    # Write changes back to file
+    try:
+        with open(file_path, 'w') as f:
+            f.writelines(new_lines)
+    except Exception as e:
+        log_message(f"ERROR: Failed to write {file_path}: {e}", True)
+        return False, f"write error: {e}"
+    
+    return True, change_desc
+
+def main():
+    """Main execution function"""
+    if os.geteuid() != 0:
+        log_message("ERROR: This script must be run as root", True)
+        sys.exit(2)
+    
+    # Load configuration
+    config = load_config()
+    log_message(f"Loaded configuration: {config}")
+    
+    # Find all conf files
+    try:
+        conf_files = list(Path(SITES_DIR).glob("*.conf"))
+    except Exception as e:
+        log_message(f"ERROR: Failed to scan {SITES_DIR}: {e}", True)
+        sys.exit(2)
+    
+    if not conf_files:
+        log_message("No .conf files found in sites-enabled")
+        sys.exit(0)
+    
+    # Analyze all configs
+    files_needing_updates = []
+    for conf_file in conf_files:
+        analysis = analyze_config(conf_file, config)
+        if analysis and any([
+            analysis['server_header_action'] != 'SKIP',
+            analysis['php_header_action'] != 'SKIP',
+            analysis['listen_http2_action'] != 'SKIP',
+            analysis['ipv6_http_action'] != 'SKIP',
+            analysis['reuseport_action'] != 'SKIP',
+            analysis['http2_directive_action'] != 'SKIP',
+            analysis['http3_directive_action'] != 'SKIP',
+            analysis['quic_gso_action'] != 'SKIP',
+            analysis['quic_listeners_action'] != 'SKIP',
+            analysis['includes_action'] != 'SKIP'
+        ]):
+            files_needing_updates.append((conf_file, analysis))
+    
+    # If no files need updates, exit with minimal log
+    if not files_needing_updates:
+        log_message("Configuration check: All configs up to date")
+        sys.exit(0)
+    
+    # Create backup
+    if not create_backup():
+        log_message("FATAL: Failed to create backup", True)
+        sys.exit(2)
+    
+    # Process files that need updates
+    log_message("Processing configuration files...")
+    processed_files = []
+    
+    for conf_file, analysis in files_needing_updates:
+        filename = conf_file.name
+        
+        try:
+            updated, change_desc = process_nginx_config(conf_file, analysis)
+            if updated:
+                log_message(f"Processing {filename}... DONE ({change_desc})")
+                processed_files.append(filename)
+        except Exception as e:
+            log_message(f"ERROR: Failed to process {filename}: {e}", True)
+            # Restore backup and exit
+            if restore_backup():
+                log_message(f"ERROR: Processing failed, reverted from backup {BACKUP_DIR}", True)
+                sys.exit(1)
+            else:
+                log_message("FATAL: Failed to restore backup, manual intervention required", True)
+                sys.exit(2)
+    
+    # Test nginx configuration
+    config_valid, error_output = test_nginx_config()
+    
+    if not config_valid:
+        print(f"NGINX ERROR: {error_output}")
+        # Restore backup
+        if restore_backup():
+            log_message(f"ERROR: nginx config test failed, reverted from backup {BACKUP_DIR}", True)
+            sys.exit(1)
+        else:
+            log_message("FATAL: nginx test failed and backup restoration failed, manual intervention required", True)
+            sys.exit(2)
+    
+    # Reload nginx
+    if not reload_nginx():
+        log_message("ERROR: Failed to reload nginx after successful config test", True)
+        sys.exit(1)
+    
+    # Success
+    log_message(f"Configuration update completed: {len(processed_files)} files processed, nginx reloaded")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
