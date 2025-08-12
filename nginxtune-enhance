@@ -533,7 +533,6 @@ def main():
     
     # Load configuration
     config = load_config()
-    log_message(f"Loaded configuration: {config}")
     
     # Find all conf files
     try:
@@ -568,7 +567,8 @@ def main():
     if not files_needing_updates:
         log_message("Configuration check: All configs up to date")
         sys.exit(0)
-    
+    log_message(f"Loaded configuration: {config}")
+
     # Create backup
     if not create_backup():
         log_message("FATAL: Failed to create backup", True)
