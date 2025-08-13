@@ -1,12 +1,12 @@
 # nginxtune-enhance
 
-**Version:** 0.3  
+**Version:** 0.3.1  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
 ## Overview
 
-nginxtune-enhance is an automated configuration management tool for Enhance hosting environments that fixes Nginx configuration issues and provides HTTP/3 protocol optimization with centralized security management. The script uses feature toggles to manage configurations reversibly while maintaining compatibility with Enhance's auto-generated files.
+nginxtune-enhance is an automated configuration management tool for Enhance hosting environments that fixes Nginx configuration issues and provides HTTP/3 protocol optimization with centralized security management. The script uses feature toggles to manage configurations reversibly while maintaining compatibility with Enhance's auto-generated files. Future Enhance updates might break the functionality, although checks are in place to prevent this.
 
 ## Objectives
 
@@ -29,21 +29,26 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 ### Security Features
 - **SSL Configuration**: Modern TLS protocols and secure cipher suites
-- **Server Hardening**: Security headers and attack protection measures  
+- **Server Hardening**: Basic server hardening measures  
 - **CMS Protection**: WordPress-specific security rules and file access restrictions
 
 ### Performance Fixes
-- **IPv6 Support**: Adds missing IPv6:80 listeners to default.conf
+- **Quic GSO**: Utilize quic_gso, a commonly used option that provides Generic Segmentation Offloading
 - **Reuseport Optimization**: Enables socket reuse for improved performance
+
+### Vhost Override Optimization
+- **Eliminates Manual Copy/Paste**: Security configurations deploy automatically across all websites without repetitive setup
+- **Minimal Override Files**: Keep vhost overrides focused only on site-specific customizations instead of repeating common security directives
+- **Centralized Management**: Apply consistent security standards server-wide through simple feature toggles
 
 ## File Structure
 
 ```
 /opt/nginxtune-enhance/
-├── nginxtune-enhance          # Main executable script (v0.3)
-├── config.json                 # Feature toggle configuration
-├── debug_analysis.py           # Debug utility script
-└── overrides/                  # Modular security configurations
+├── nginxtune-enhance          # Main executable script (v0.3.1)
+├── config.json                # Feature toggle configuration
+├── debug_analysis.py          # Debug utility script
+└── overrides/                 # Modular security configurations
     ├── ssl.conf               # SSL A+ security settings
     ├── hardening.conf         # Server hardening configuration
     └── cms.conf               # CMS/WordPress protection rules
@@ -53,13 +58,28 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 The `config.json` file controls all features through boolean toggles:
 
-- **config_fixes**: Adds IPv6:80 listeners and reuseport to default.conf for performance
+- **config_fixes**: Adds IPv6:80 listeners and reuseport to default.conf
 - **http3_enable**: Enables full HTTP/3 support with QUIC listeners and Alt-Svc headers  
+- **quic_gso_enable**: Enables QUIC Generic Segmentation Offloading (requires http3_enable)
 - **ssl_upgrade**: Includes SSL security configuration for modern TLS settings
-- **server_hardening**: Applies security headers and server hardening measures
+- **server_hardening**: Applies server hardening measures
 - **cms_protection**: Enables WordPress and CMS-specific security protections
 
-All features are disabled by default except `config_fixes`. Enable features by setting them to `true` in the configuration file.
+### Default Configuration
+```json
+{
+  "features": {
+    "config_fixes": true,
+    "http3_enable": false,
+    "quic_gso_enable": false,
+    "ssl_upgrade": false,
+    "server_hardening": false,
+    "cms_protection": false
+  }
+}
+```
+
+All features are disabled by default except `config_fixes`.
 
 ## Installation and Usage
 
@@ -80,7 +100,7 @@ git clone https://github.com/rdbf/nginxtune-enhance.git
 # Add to cron for automatic management
 crontab -e
 
-# Add these line to run every minute:
+# Add this commented line to run every minute:
 
 # Run nginxtune-enhance
 * * * * * /opt/nginxtune-enhance/nginxtune-enhance >/dev/null 2>&1
@@ -115,23 +135,9 @@ All operations are logged to `/var/log/nginxtune-enhance.log` with timestamps:
 - **Validation**: Tests nginx configuration before applying changes
 - **Rollback**: Automatically restores from backup if validation fails
 
-## Exit Codes
-
-- **0**: Success or no changes needed
-- **1**: Error with successful rollback  
-- **2**: Fatal error requiring manual intervention
-
-## Requirements
-
-- Root access required
-- Enhance hosting environment
-- Nginx with HTTP/3 support compiled in
-- Python 3.6+ with standard libraries
-
 ## Version History
 
+**0.3.1** - Separate QUIC GSO toggle, improved reuseport handling  
 **0.3** - Feature toggle system, modular overrides, targeted include management, performance optimizations  
 **0.2** - Unified add/remove logic, JSON configuration, improved state detection  
 **0.1** - Initial HTTP/3 configuration automation with basic security features
-
----
