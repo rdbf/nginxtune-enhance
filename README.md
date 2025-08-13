@@ -1,6 +1,6 @@
 # nginxtune-enhance
 
-**Version:** 0.3.1  
+**Version:** 0.3.2  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
@@ -24,6 +24,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 ### HTTP/3 Support
 - **QUIC Listeners**: Adds dedicated HTTP/3 listeners (443 quic, [::]:443 quic)
 - **Alt-Svc Headers**: Implements HTTP/3 advertisement headers for server and PHP locations
+- **FastCGI HTTP_HOST parameter**: Ensure PHP gets the correct host header for HTTP/3 QUIC connections
 - **Protocol Directives**: Manages http2 on, http3 on, and quic_gso on settings
 - **Listen Directive Management**: Properly handles HTTP/2 and HTTP/3 listen configurations
 
