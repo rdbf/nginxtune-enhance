@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Version: 0.3.1
+Version: 0.3.2
 Author: rdbf
 
 HTTP/3 configuration management script for Enhance Nginx
@@ -12,6 +12,7 @@ Features managed:
 - Listen directives (HTTP/2, HTTP/3/QUIC listeners)
 - Protocol directives (http2 on, http3 on, quic_gso on)
 - Alt-Svc headers (server-level and PHP location blocks)
+- FastCGI HTTP_HOST parameter (improved HTTP/3 compatibility)
 - Modular override includes (SSL, hardening, CMS protection)
 
 The script analyzes current configuration state, determines required changes,
@@ -396,6 +397,11 @@ def process_site_conf(lines, analysis):
               (analysis['server_header_action'] == 'REMOVE' or analysis['php_header_action'] == 'REMOVE')):
             continue
         
+        # Remove FastCGI HTTP_HOST parameter when HTTP/3 disabled
+        elif ('fastcgi_param HTTP_HOST $host;' in line and 
+              analysis['php_header_action'] == 'REMOVE'):
+            continue
+        
         # Remove protocol directives when disabled - directive-specific logic
         elif (stripped == 'http2 on;' and analysis['http2_directive_action'] == 'REMOVE') or \
              (stripped == 'http3 on;' and analysis['http3_directive_action'] == 'REMOVE') or \
@@ -418,6 +424,7 @@ def process_site_conf(lines, analysis):
             new_lines.append(line)
             php_indent = detect_php_indentation_safe(lines, i)
             new_lines.append(f"{php_indent}add_header Alt-Svc '{ALT_SVC_HEADER}';\n")
+            new_lines.append(f"{php_indent}fastcgi_param HTTP_HOST $host;\n")
             php_header_added = True
         
         # Add server-level Alt-Svc header and protocol directives
