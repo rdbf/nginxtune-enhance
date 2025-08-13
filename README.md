@@ -140,7 +140,8 @@ All operations are logged to `/var/log/nginxtune-enhance.log` with timestamps:
 
 ## Version History
 
+**0.3.1** - Add FastCGI HTTP_HOST parameter for better HTTP3 compatibility with PHP  
 **0.3.1** - Separate QUIC GSO toggle, improved reuseport handling  
-**0.3** - Feature toggle system, modular overrides, targeted include management, performance optimizations  
-**0.2** - Unified add/remove logic, JSON configuration, improved state detection  
-**0.1** - Initial HTTP/3 configuration automation with basic security features
+**0.3.0** - Feature toggle system, modular overrides, targeted include management, performance optimizations  
+**0.2.0** - Unified add/remove logic, JSON configuration, improved state detection  
+**0.1.0** - Initial HTTP/3 configuration automation with basic security features
