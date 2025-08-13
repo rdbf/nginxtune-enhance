@@ -1,9 +1,0 @@
-{
-  "features": {
-    "config_fixes": true,
-    "http3_enable": false,
-    "ssl_upgrade": false,
-    "server_hardening": false,
-    "cms_protection": false
-  }
-}

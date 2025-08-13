@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Version: 0.3
+Version: 0.3.1
 Author: rdbf
 
 HTTP/3 configuration management script for Enhance Nginx
@@ -43,6 +43,7 @@ def load_config():
         return {'features': {
             'config_fixes': True,
             'http3_enable': False,
+            'quic_gso_enable': False,
             'ssl_upgrade': False,
             'server_hardening': False,
             'cms_protection': False
@@ -244,7 +245,7 @@ def analyze_config(file_path, config):
         # Protocol directive actions  
         'http2_directive_action': get_action(features.get('http3_enable', False), has_http2_directive),
         'http3_directive_action': get_action(features.get('http3_enable', False), has_http3_directive),
-        'quic_gso_action': get_action(features.get('http3_enable', False), has_quic_gso),
+        'quic_gso_action': get_action(features.get('quic_gso_enable', False) and features.get('http3_enable', False), has_quic_gso),
         'quic_listeners_action': get_action(features.get('http3_enable', False), has_quic_listeners),
         
         # Include actions (only for site configs, not default.conf)
@@ -324,25 +325,20 @@ def process_default_conf(lines, analysis):
                 new_line = new_line.replace(' reuseport', '')
             new_lines.append(f'{base_indent}{new_line}\n')
             
-            # Add QUIC listeners when HTTP/3 enabled
+            # Add QUIC listeners when HTTP/3 enabled - always with reuseport in default.conf
             if analysis['quic_listeners_action'] == 'ADD':
-                if analysis['reuseport_action'] == 'ADD':
-                    new_lines.append(f'{base_indent}listen 443 quic default_server reuseport;\n')
-                    new_lines.append(f'{base_indent}listen [::]:443 quic default_server reuseport;\n')
-                else:
-                    new_lines.append(f'{base_indent}listen 443 quic default_server;\n')
-                    new_lines.append(f'{base_indent}listen [::]:443 quic default_server;\n')
+                new_lines.append(f'{base_indent}listen 443 quic default_server reuseport;\n')
+                new_lines.append(f'{base_indent}listen [::]:443 quic default_server reuseport;\n')
         
         # Remove QUIC listeners when HTTP/3 disabled
         elif ((stripped.startswith('listen 443 quic') or stripped.startswith('listen [::]:443 quic')) and 
               analysis['quic_listeners_action'] == 'REMOVE'):
             continue
         
-        # Remove protocol directives when disabled
-        elif (stripped in ['http2 on;', 'http3 on;', 'quic_gso on;'] and 
-              (analysis['http2_directive_action'] == 'REMOVE' or 
-               analysis['http3_directive_action'] == 'REMOVE' or 
-               analysis['quic_gso_action'] == 'REMOVE')):
+        # Remove protocol directives when disabled - directive-specific logic
+        elif (stripped == 'http2 on;' and analysis['http2_directive_action'] == 'REMOVE') or \
+             (stripped == 'http3 on;' and analysis['http3_directive_action'] == 'REMOVE') or \
+             (stripped == 'quic_gso on;' and analysis['quic_gso_action'] == 'REMOVE'):
             continue
         
         # Add protocol directives after server_name
@@ -385,7 +381,7 @@ def process_site_conf(lines, analysis):
                 new_line = stripped
             
             new_lines.append(f'{base_indent}{new_line}\n')
-            # Add QUIC listeners after IPv6 HTTPS listener
+            # Add QUIC listeners after IPv6 HTTPS listener (without reuseport for site configs)
             if stripped in ['listen [::]:443 ssl http2;', 'listen [::]:443 ssl;'] and analysis['quic_listeners_action'] == 'ADD':
                 new_lines.append(f'{base_indent}listen 443 quic;\n')
                 new_lines.append(f'{base_indent}listen [::]:443 quic;\n')
@@ -400,11 +396,10 @@ def process_site_conf(lines, analysis):
               (analysis['server_header_action'] == 'REMOVE' or analysis['php_header_action'] == 'REMOVE')):
             continue
         
-        # Remove protocol directives when disabled
-        elif (stripped in ['http2 on;', 'http3 on;', 'quic_gso on;'] and 
-              (analysis['http2_directive_action'] == 'REMOVE' or 
-               analysis['http3_directive_action'] == 'REMOVE' or 
-               analysis['quic_gso_action'] == 'REMOVE')):
+        # Remove protocol directives when disabled - directive-specific logic
+        elif (stripped == 'http2 on;' and analysis['http2_directive_action'] == 'REMOVE') or \
+             (stripped == 'http3 on;' and analysis['http3_directive_action'] == 'REMOVE') or \
+             (stripped == 'quic_gso on;' and analysis['quic_gso_action'] == 'REMOVE'):
             continue
         
         # Remove unwanted includes (legacy files and unknown includes)
