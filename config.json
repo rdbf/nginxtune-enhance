@@ -1,10 +1,10 @@
 {
   "features": {
     "config_fixes": true,
-    "http3_enable": true,
+    "http3_enable": false,
     "quic_gso_enable": false,
-    "ssl_upgrade": true,
-    "server_hardening": true,
-    "cms_protection": true
+    "ssl_upgrade": false,
+    "server_hardening": false,
+    "cms_protection": false
   }
 }
