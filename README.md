@@ -113,6 +113,8 @@ cd /opt/nginxtune-enhance
 git pull origin main
 ```
 
+When updating from a previous version with config settings as "true", revert all settings to "false", run the script to restore the base .conf files, and then re-enable the settings again.
+
 ### Verification
 ```bash
 # Check logs for operation status
