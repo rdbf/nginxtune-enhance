@@ -97,6 +97,10 @@ All features are disabled by default except `config_fixes`.
 cd /opt
 git clone https://github.com/rdbf/nginxtune-enhance.git
 
+# Create config file
+cd /opt/nginxtune-enhance
+cp config.json.example config.json
+
 # Test the script
 /opt/nginxtune-enhance/nginxtune-enhance
 
@@ -110,12 +114,22 @@ crontab -e
 ```
 
 ### Updates
+
+**IMPORTANT**: If you get an error about "local changes would be overwritten by merge" when trying to update, run:
+
+```bash
+cd /opt/nginxtune-enhance
+git reset --hard origin/main
+cp config.json.example config.json
+```
+
+**Note**: This will replace your config.json with the new template format. You'll need to configure your desired features in config.json after updating.
+
+Future updates will work normally:
 ```bash
 cd /opt/nginxtune-enhance
 git pull origin main
 ```
-
-When updating from a previous version with config settings as "true", revert all settings to "false", run the script to restore the base .conf files, and then re-enable the settings again.
 
 ### Verification
 ```bash
