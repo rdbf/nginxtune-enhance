@@ -1,6 +1,6 @@
 # nginxtune-enhance
 
-**Version:** 0.3.2  
+**Version:** 0.3.3  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
@@ -46,7 +46,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 ```
 /opt/nginxtune-enhance/
-├── nginxtune-enhance          # Main executable script (v0.3.1)
+├── nginxtune-enhance          # Main executable script (v0.3.3)
 ├── config.json                # Feature toggle configuration
 ├── debug_analysis.py          # Debug utility script
 └── overrides/                 # Modular security configurations
@@ -65,6 +65,7 @@ The `config.json` file controls all features through boolean toggles:
 - **ssl_upgrade**: Includes SSL security configuration for modern TLS settings
 - **server_hardening**: Applies server hardening measures
 - **cms_protection**: Enables WordPress and CMS-specific security protections
+- **backup_retention_days**: Number of days to retain backup directories (default 30)
 
 ### Default Configuration
 ```json
@@ -76,7 +77,8 @@ The `config.json` file controls all features through boolean toggles:
     "ssl_upgrade": false,
     "server_hardening": false,
     "cms_protection": false
-  }
+  },
+  "backup_retention_days": 30
 }
 ```
 
@@ -137,10 +139,12 @@ All operations are logged to `/var/log/nginxtune-enhance.log` with timestamps:
 - **Location**: `/etc/nginx/backups/YYYYMMDD_HHMMSS/`
 - **Validation**: Tests nginx configuration before applying changes
 - **Rollback**: Automatically restores from backup if validation fails
+- **Retention**: Configurable cleanup of old backups (default 30 days)
 
 ## Version History
 
-**0.3.1** - Add FastCGI HTTP_HOST parameter for better HTTP3 compatibility with PHP  
+**0.3.3** - Backup retention management  
+**0.3.2** - Add FastCGI HTTP_HOST parameter for better HTTP3 compatibility with PHP  
 **0.3.1** - Separate QUIC GSO toggle, improved reuseport handling  
 **0.3.0** - Feature toggle system, modular overrides, targeted include management, performance optimizations  
 **0.2.0** - Unified add/remove logic, JSON configuration, improved state detection  
