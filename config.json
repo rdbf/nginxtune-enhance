@@ -6,5 +6,6 @@
     "ssl_upgrade": false,
     "server_hardening": false,
     "cms_protection": false
-  }
+  },
+  "backup_retention_days": 30
 }
