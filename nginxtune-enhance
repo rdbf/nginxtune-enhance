@@ -174,7 +174,8 @@ def analyze_config(file_path, config):
     
     # Check for Alt-Svc headers
     server_header_exists = False
-    php_header_exists = False
+    php_alt_svc_exists = False
+    php_fastcgi_exists = False
     
     if has_server_name:
         for i, line in enumerate(lines):
@@ -196,9 +197,11 @@ def analyze_config(file_path, config):
                 in_php_block = True
             elif in_php_block and "}" in line and line.strip() == "}":
                 in_php_block = False
-            elif in_php_block and f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line:
-                php_header_exists = True
-                break
+            elif in_php_block:
+                if f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line:
+                    php_alt_svc_exists = True
+                elif 'fastcgi_param HTTP_HOST $host;' in line:
+                    php_fastcgi_exists = True
     
     # Check for includes - separate manageable from unwanted
     current_includes = []
@@ -236,7 +239,14 @@ def analyze_config(file_path, config):
         
         # Alt-Svc header actions
         'server_header_action': get_action(features.get('http3_enable', False) and not is_default and has_server_name, server_header_exists),
-        'php_header_action': get_action(features.get('http3_enable', False) and not is_default and has_php_location, php_header_exists),
+        
+        # Separate PHP directive actions
+        'php_alt_svc_action': get_action(features.get('http3_enable', False) and not is_default and has_php_location, php_alt_svc_exists),
+        'php_fastcgi_action': get_action(features.get('http3_enable', False) and not is_default and has_php_location, php_fastcgi_exists),
+        
+        # Individual directive existence tracking
+        'php_alt_svc_exists': php_alt_svc_exists,
+        'php_fastcgi_exists': php_fastcgi_exists,
         
         # Listen directive actions
         'listen_http2_action': get_action(not features.get('http3_enable', False), has_listen_http2),  # Add http2 when http3 disabled
@@ -394,12 +404,12 @@ def process_site_conf(lines, analysis):
         
         # Remove Alt-Svc headers when HTTP/3 disabled
         elif (f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line and 
-              (analysis['server_header_action'] == 'REMOVE' or analysis['php_header_action'] == 'REMOVE')):
+              (analysis['server_header_action'] == 'REMOVE' or analysis['php_alt_svc_action'] == 'REMOVE')):
             continue
         
         # Remove FastCGI HTTP_HOST parameter when HTTP/3 disabled
         elif ('fastcgi_param HTTP_HOST $host;' in line and 
-              analysis['php_header_action'] == 'REMOVE'):
+              analysis['php_fastcgi_action'] == 'REMOVE'):
             continue
         
         # Remove protocol directives when disabled - directive-specific logic
@@ -418,13 +428,21 @@ def process_site_conf(lines, analysis):
             else:
                 new_lines.append(line)  # Keep includes that should remain
         
-        # Add Alt-Svc header to PHP location blocks
+        # Add Alt-Svc header and/or FastCGI parameter to PHP location blocks
         elif (r'location ~ \.php$' in stripped and '{' in stripped 
-              and analysis['php_header_action'] == 'ADD' and not php_header_added):
+              and (analysis['php_alt_svc_action'] == 'ADD' or analysis['php_fastcgi_action'] == 'ADD')
+              and not php_header_added):
             new_lines.append(line)
             php_indent = detect_php_indentation_safe(lines, i)
-            new_lines.append(f"{php_indent}add_header Alt-Svc '{ALT_SVC_HEADER}';\n")
-            new_lines.append(f"{php_indent}fastcgi_param HTTP_HOST $host;\n")
+            
+            # Add Alt-Svc header if needed
+            if analysis['php_alt_svc_action'] == 'ADD':
+                new_lines.append(f"{php_indent}add_header Alt-Svc '{ALT_SVC_HEADER}';\n")
+            
+            # Add FastCGI HTTP_HOST parameter if needed
+            if analysis['php_fastcgi_action'] == 'ADD':
+                new_lines.append(f"{php_indent}fastcgi_param HTTP_HOST $host;\n")
+            
             php_header_added = True
         
         # Add server-level Alt-Svc header and protocol directives
@@ -475,7 +493,8 @@ def process_nginx_config(file_path, analysis):
     # Check if any updates are needed
     needs_updates = any([
         analysis['server_header_action'] != 'SKIP',
-        analysis['php_header_action'] != 'SKIP',
+        analysis['php_alt_svc_action'] != 'SKIP',
+        analysis['php_fastcgi_action'] != 'SKIP',
         analysis['listen_http2_action'] != 'SKIP',
         analysis['ipv6_http_action'] != 'SKIP',
         analysis['reuseport_action'] != 'SKIP',
@@ -502,16 +521,32 @@ def process_nginx_config(file_path, analysis):
     else:
         new_lines = process_site_conf(lines, analysis)
     
-    # Build change description
+    # Build detailed change description
     changes = []
+    
     if analysis['listen_http2_action'] != 'SKIP' or analysis['ipv6_http_action'] != 'SKIP' or analysis['quic_listeners_action'] != 'SKIP':
         changes.append("listen directives")
-    if analysis['server_header_action'] != 'SKIP' or analysis['php_header_action'] != 'SKIP':
-        changes.append("Alt-Svc headers")
+    
+    # More specific logging for Alt-Svc and FastCGI changes
+    header_changes = []
+    if analysis['server_header_action'] != 'SKIP':
+        header_changes.append("server Alt-Svc")
+    
+    if analysis['php_alt_svc_action'] != 'SKIP':
+        header_changes.append("PHP Alt-Svc")
+    
+    if analysis['php_fastcgi_action'] != 'SKIP':
+        header_changes.append("PHP FastCGI")
+    
+    if header_changes:
+        changes.append(", ".join(header_changes))
+    
     if analysis['http2_directive_action'] != 'SKIP' or analysis['http3_directive_action'] != 'SKIP' or analysis['quic_gso_action'] != 'SKIP':
-        changes.append("http2/3/gso")
+        changes.append("http3 protocol directives")
+    
     if analysis['includes_action'] != 'SKIP':
-        changes.append("overrides includes")
+        changes.append("override includes")
+    
     if analysis['reuseport_action'] != 'SKIP':
         changes.append("reuseport")
     
@@ -553,7 +588,8 @@ def main():
         analysis = analyze_config(conf_file, config)
         if analysis and any([
             analysis['server_header_action'] != 'SKIP',
-            analysis['php_header_action'] != 'SKIP',
+            analysis['php_alt_svc_action'] != 'SKIP',
+            analysis['php_fastcgi_action'] != 'SKIP',
             analysis['listen_http2_action'] != 'SKIP',
             analysis['ipv6_http_action'] != 'SKIP',
             analysis['reuseport_action'] != 'SKIP',
