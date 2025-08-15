@@ -1,6 +1,5 @@
 {
   "features": {
-    "config_fixes": true,
     "http3_enable": false,
     "quic_gso_enable": false,
     "ssl_upgrade": false,
