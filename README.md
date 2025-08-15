@@ -28,6 +28,11 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 - **Performance Optimization**: reuseport and QUIC GSO
 - **Security Modules**: SSL configuration, server hardening, and CMS protection includes
 
+### Security Features
+- **SSL Configuration**: Modern TLS protocols and secure cipher suites
+- **Server Hardening**: Basic server hardening measures  
+- **CMS Protection**: WordPress-specific security rules and file access restrictions
+
 ### Vhost Override Optimization
 - **Eliminates Manual Copy/Paste**: Security configurations deploy automatically across all websites without repetitive setup
 - **Minimal Override Files**: Keep vhost overrides focused only on site-specific customizations instead of repeating common security directives
