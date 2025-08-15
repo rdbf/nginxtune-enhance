@@ -224,6 +224,9 @@ def apply_http3_enable(config, mode="check"):
                 log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
             continue
         
+        # Detect if vhost has PHP location blocks first
+        has_php_location = any('location ~ \\.php$' in line for line in lines)
+        
         # Define target state
         if is_default:
             if http3_enabled:
@@ -258,8 +261,12 @@ def apply_http3_enable(config, mode="check"):
                     'listen [::]:443 quic'
                 ]
                 target_directives = ['http2 on', 'http3 on']
-                target_server_headers = [f"add_header Alt-Svc '{ALT_SVC_HEADER}'"]
-                target_php_additions = [f"add_header Alt-Svc '{ALT_SVC_HEADER}'", 'fastcgi_param HTTP_HOST $host']
+                target_server_headers = [f"add_header Alt-Svc '{ALT_SVC_HEADER}'", 'fastcgi_param HTTP_HOST $host']
+                # Only set PHP additions if PHP location blocks exist
+                if has_php_location:
+                    target_php_additions = [f"add_header Alt-Svc '{ALT_SVC_HEADER}'", 'fastcgi_param HTTP_HOST $host']
+                else:
+                    target_php_additions = []
             else:
                 target_listeners = [
                     'listen 80',
@@ -276,7 +283,6 @@ def apply_http3_enable(config, mode="check"):
         current_directives = []
         current_server_headers = []
         current_php_additions = []
-        has_php_location = False
         in_php_block = False
         
         for line in lines:
@@ -295,6 +301,10 @@ def apply_http3_enable(config, mode="check"):
             elif f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line and not in_php_block and not is_default:
                 current_server_headers.append(stripped.rstrip(';'))
             
+            # Collect current FastCGI HTTP_HOST parameters (only server-level for site configs)
+            elif 'fastcgi_param HTTP_HOST $host;' in line and not in_php_block and not is_default:
+                current_server_headers.append(stripped.rstrip(';'))
+            
             # Collect current PHP additions
             elif in_php_block and not is_default:
                 if f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line:
@@ -304,7 +314,6 @@ def apply_http3_enable(config, mode="check"):
             
             # Track PHP location blocks
             elif 'location ~ \\.php$' in stripped and not is_default:
-                has_php_location = True
                 in_php_block = True
             elif in_php_block and stripped == "}":
                 in_php_block = False
