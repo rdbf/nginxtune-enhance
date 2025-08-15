@@ -932,9 +932,9 @@ def apply_real_ip_logging(config, mode="check"):
         
         for line in lines:
             stripped = line.strip()
-            if 'map $http_cf_connecting_ip $real_ip' in stripped:
+            if 'map $http_cf_connecting_ip $realip' in stripped:
                 has_real_ip_map = True
-            elif 'log_format' in stripped and '$real_ip' in stripped:
+            elif 'log_format' in stripped and '$realip' in stripped:
                 has_real_ip_log_format = True
         
         # Check if changes are needed
@@ -977,9 +977,9 @@ def apply_real_ip_logging(config, mode="check"):
         
         for line in lines:
             stripped = line.strip()
-            if 'map $http_cf_connecting_ip $real_ip' in stripped:
+            if 'map $http_cf_connecting_ip $realip' in stripped:
                 has_real_ip_map = True
-            elif 'log_format' in stripped and '$real_ip' in stripped:
+            elif 'log_format' in stripped and '$realip' in stripped:
                 has_real_ip_log_format = True
         
         # Check if changes are needed
@@ -997,18 +997,18 @@ def apply_real_ip_logging(config, mode="check"):
             stripped = line.strip()
             
             # Remove existing real IP map line when disabled
-            if not real_ip_logging_enabled and 'map $http_cf_connecting_ip $real_ip' in stripped:
+            if not real_ip_logging_enabled and 'map $http_cf_connecting_ip $realip' in stripped:
                 continue  # Skip the entire map line
             
             # Update log_format line
             elif 'log_format' in stripped:
                 if real_ip_logging_enabled and '$remote_addr' in stripped:
-                    # Replace $remote_addr with $real_ip
-                    new_line = line.replace('$remote_addr', '$real_ip')
+                    # Replace $remote_addr with $realip
+                    new_line = line.replace('$remote_addr', '$realip')
                     new_lines.append(new_line)
-                elif not real_ip_logging_enabled and '$real_ip' in stripped:
-                    # Replace $real_ip with $remote_addr
-                    new_line = line.replace('$real_ip', '$remote_addr')
+                elif not real_ip_logging_enabled and '$realip' in stripped:
+                    # Replace $realip with $remote_addr
+                    new_line = line.replace('$realip', '$remote_addr')
                     new_lines.append(new_line)
                 else:
                     new_lines.append(line)
@@ -1017,7 +1017,7 @@ def apply_real_ip_logging(config, mode="check"):
             elif (stripped.startswith('fastcgi_cache_path') and real_ip_logging_enabled 
                   and not real_ip_map_added and not has_real_ip_map):
                 # Add single-line map directive before fastcgi_cache_path
-                new_lines.append('map $http_cf_connecting_ip $real_ip { default $http_cf_connecting_ip; "" $remote_addr; }\n')
+                new_lines.append('map $http_cf_connecting_ip $realip { default $http_cf_connecting_ip; "" $remote_addr; }\n')
                 new_lines.append(line)
                 real_ip_map_added = True
             
