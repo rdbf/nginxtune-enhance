@@ -1,6 +1,6 @@
 # nginxtune-enhance
 
-**Version:** 0.3.4  
+**Version:** 0.3.5  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
@@ -27,6 +27,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 - **HTTP/3 Compatibility**: Alt-Svc headers and FastCGI HTTP_HOST parameter
 - **Performance Optimization**: reuseport and QUIC GSO
 - **Security Modules**: SSL configuration, server hardening, and CMS protection includes
+- **Logging Features**: Persistent logging and Cloudflare real IP detection
 
 ### Security Features
 - **SSL Configuration**: Modern TLS protocols and secure cipher suites
@@ -42,7 +43,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 ```
 /opt/nginxtune-enhance/
-├── nginxtune-enhance          # Main executable script (v0.3.4)
+├── nginxtune-enhance          # Main executable script (v0.3.5)
 ├── config.json                # Feature toggle configuration
 ├── debug_analysis.py          # Debug utility script
 └── overrides/                 # Modular security configurations
@@ -60,6 +61,8 @@ The `config.json` file controls all features through boolean toggles:
 - **ssl_upgrade**: Includes SSL security configuration for modern TLS settings
 - **server_hardening**: Applies server hardening measures
 - **cms_protection**: Enables WordPress and CMS-specific security protections
+- **persistent_logging**: Dual access logs (Enhance + persistent historical data)
+- **real_ip_logging**: Cloudflare real visitor IP detection instead of edge server IPs
 - **backup_retention_days**: Number of days to retain backup directories (default 30)
 
 ### Default Configuration
@@ -70,7 +73,9 @@ The `config.json` file controls all features through boolean toggles:
     "quic_gso_enable": false,
     "ssl_upgrade": false,
     "server_hardening": false,
-    "cms_protection": false
+    "cms_protection": false,
+    "persistent_logging": false,
+    "real_ip_logging": false
   },
   "backup_retention_days": 30
 }
@@ -141,6 +146,12 @@ All operations are logged to `/var/log/nginxtune-enhance.log` with timestamps:
 - Error conditions and backup/restore operations  
 - Nginx validation and reload results
 
+### Persistent Logging
+When the `persistent_logging` feature is enabled:
+- Access logs are duplicated to `/var/log/nginx/<UUID>.log` (survives Enhance configuration reloads)
+- Uses the same log format as Enhance-managed logs for consistency
+- Real visitor IPs are logged when `real_ip_logging` is enabled (extracts Cloudflare visitor IPs instead of edge server IPs)
+
 ## Backup System
 
 - **Automatic Backups**: Creates timestamped backups before any changes
@@ -151,6 +162,7 @@ All operations are logged to `/var/log/nginxtune-enhance.log` with timestamps:
 
 ## Version History
 
+**0.3.5** - Added persistent logging and Cloudflare real IP detection features  
 **0.3.4** - HTTP/3 and configuration fixes have been merged for cleaner logic  
 **0.3.3** - Backup retention management  
 **0.3.2** - Add FastCGI HTTP_HOST parameter for better HTTP3 compatibility with PHP  
