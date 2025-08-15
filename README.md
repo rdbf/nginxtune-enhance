@@ -1,6 +1,6 @@
 # nginxtune-enhance
 
-**Version:** 0.3.3  
+**Version:** 0.3.4  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
@@ -21,21 +21,12 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 - **Targeted Processing**: Only modifies files when changes are actually needed
 - **State Detection**: Analyzes current configuration to determine required actions
 
-### HTTP/3 Support
-- **QUIC Listeners**: Adds dedicated HTTP/3 listeners (443 quic, [::]:443 quic)
-- **Alt-Svc Headers**: Implements HTTP/3 advertisement headers for server and PHP locations
-- **FastCGI HTTP_HOST parameter**: Ensure PHP gets the correct host header for HTTP/3 QUIC connections
-- **Protocol Directives**: Manages http2 on, http3 on, and quic_gso on settings
-- **Listen Directive Management**: Properly handles HTTP/2 and HTTP/3 listen configurations
-
-### Security Features
-- **SSL Configuration**: Modern TLS protocols and secure cipher suites
-- **Server Hardening**: Basic server hardening measures  
-- **CMS Protection**: WordPress-specific security rules and file access restrictions
-
-### Performance Fixes
-- **Quic GSO**: Utilize quic_gso, a commonly used option that provides Generic Segmentation Offloading
-- **Reuseport Optimization**: Enables socket reuse for improved performance
+### Features Managed
+- **Listen Directives**: HTTP/2 and HTTP/3/QUIC listeners with proper IPv6 support
+- **Protocol Configuration**: http2 on, http3 on, and quic_gso directives
+- **HTTP/3 Compatibility**: Alt-Svc headers and FastCGI HTTP_HOST parameter
+- **Performance Optimization**: reuseport and QUIC GSO
+- **Security Modules**: SSL configuration, server hardening, and CMS protection includes
 
 ### Vhost Override Optimization
 - **Eliminates Manual Copy/Paste**: Security configurations deploy automatically across all websites without repetitive setup
@@ -46,7 +37,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 ```
 /opt/nginxtune-enhance/
-├── nginxtune-enhance          # Main executable script (v0.3.3)
+├── nginxtune-enhance          # Main executable script (v0.3.4)
 ├── config.json                # Feature toggle configuration
 ├── debug_analysis.py          # Debug utility script
 └── overrides/                 # Modular security configurations
@@ -59,8 +50,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 The `config.json` file controls all features through boolean toggles:
 
-- **config_fixes**: Adds IPv6:80 listeners and reuseport to default.conf
-- **http3_enable**: Enables full HTTP/3 support with QUIC listeners and Alt-Svc headers  
+- **http3_enable**: Enables full HTTP/3 support with QUIC listeners, Alt-Svc headers, and automatic configuration fixes
 - **quic_gso_enable**: Enables QUIC Generic Segmentation Offloading (requires http3_enable)
 - **ssl_upgrade**: Includes SSL security configuration for modern TLS settings
 - **server_hardening**: Applies server hardening measures
@@ -71,7 +61,6 @@ The `config.json` file controls all features through boolean toggles:
 ```json
 {
   "features": {
-    "config_fixes": true,
     "http3_enable": false,
     "quic_gso_enable": false,
     "ssl_upgrade": false,
@@ -82,7 +71,7 @@ The `config.json` file controls all features through boolean toggles:
 }
 ```
 
-All features are disabled by default except `config_fixes`.
+All features are disabled by default.
 
 ## Installation and Usage
 
@@ -157,6 +146,7 @@ All operations are logged to `/var/log/nginxtune-enhance.log` with timestamps:
 
 ## Version History
 
+**0.3.4** - HTTP/3 and configuration fixes have been merged for cleaner logic  
 **0.3.3** - Backup retention management  
 **0.3.2** - Add FastCGI HTTP_HOST parameter for better HTTP3 compatibility with PHP  
 **0.3.1** - Separate QUIC GSO toggle, improved reuseport handling  
