@@ -5,6 +5,8 @@
     "ssl_upgrade": false,
     "server_hardening": false,
     "cms_protection": false
+    "persistent_logging": false,
+    "real_ip_logging": false
   },
   "backup_retention_days": 30
 }
