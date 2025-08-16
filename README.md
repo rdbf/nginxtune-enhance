@@ -149,7 +149,7 @@ All operations are logged to `/var/log/nginxtune-enhance.log` with timestamps:
 ### Persistent Logging
 When the `persistent_logging` feature is enabled:
 - Access logs are duplicated to `/var/log/nginx/<UUID>.log` (survives Enhance configuration reloads)
-- Uses the same log format as Enhance-managed logs for consistency
+- Uses a modified log format with additional fields
 - Real visitor IPs are logged when `real_ip_logging` is enabled (extracts Cloudflare visitor IPs instead of edge server IPs)
 
 ## Backup System

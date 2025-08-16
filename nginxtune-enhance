@@ -748,150 +748,10 @@ def apply_include_features(config, mode="check"):
     
     return False
 
-def apply_persistent_logging(config, mode="check"):
-    """Apply persistent logging configuration to all configs"""
+def apply_logging_features(config, mode="check"):
+    """Apply persistent logging and real IP logging configuration to all configs"""
     features = config.get('features', {})
     persistent_logging_enabled = features.get('persistent_logging', False)
-    
-    # Process all conf files
-    try:
-        conf_files = list(Path(SITES_DIR).glob("*.conf"))
-    except Exception as e:
-        if mode == "apply":
-            log_message(f"ERROR: Failed to scan {SITES_DIR}: {e}", True)
-        return False
-    
-    if not conf_files:
-        return False
-    
-    changes_needed = False
-    
-    for conf_file in conf_files:
-        filename = conf_file.name
-        
-        # Skip 000- files
-        if filename.startswith('000-'):
-            continue
-        
-        # Skip default.conf (persistent logging only applies to site configs)
-        if filename == "default.conf":
-            continue
-        
-        try:
-            with open(conf_file, 'r') as f:
-                lines = f.readlines()
-        except Exception as e:
-            if mode == "apply":
-                log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
-            continue
-        
-        # Check current state
-        has_persistent_log = False
-        for line in lines:
-            stripped = line.strip()
-            if 'access_log /var/log/nginx/' in stripped:
-                has_persistent_log = True
-                break
-        
-        # Check if changes are needed
-        if has_persistent_log != persistent_logging_enabled:
-            changes_needed = True
-            if mode == "check":
-                break  # No need to check further files in check mode
-    
-    if mode == "check":
-        return changes_needed
-    
-    # Apply mode - make the actual changes
-    if not changes_needed:
-        return False
-    
-    modified_files = []
-    
-    for conf_file in conf_files:
-        filename = conf_file.name
-        
-        # Skip 000- files
-        if filename.startswith('000-'):
-            continue
-        
-        # Skip default.conf (persistent logging only applies to site configs)
-        if filename == "default.conf":
-            continue
-        
-        try:
-            with open(conf_file, 'r') as f:
-                lines = f.readlines()
-        except Exception as e:
-            log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
-            continue
-        
-        # Check current state
-        has_persistent_log = False
-        for line in lines:
-            stripped = line.strip()
-            if 'access_log /var/log/nginx/' in stripped:
-                has_persistent_log = True
-                break
-        
-        # Check if changes are needed
-        persistent_log_needs_change = has_persistent_log != persistent_logging_enabled
-        
-        if not persistent_log_needs_change:
-            continue
-        
-        # Apply changes
-        new_lines = []
-        persistent_log_added = False
-        
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            base_indent = detect_indentation_safe(lines, i)
-            
-            # Remove existing persistent log directive when disabled
-            if 'access_log /var/log/nginx/' in stripped and not persistent_logging_enabled:
-                continue
-            
-            # Add persistent log directive after enhance access_log
-            elif ('access_log /var/local/enhance/webserver_logs/' in stripped 
-                  and persistent_logging_enabled and not persistent_log_added):
-                new_lines.append(line)
-                # Extract UUID and log format from the enhance log line
-                try:
-                    parts = stripped.split()
-                    if len(parts) >= 3:
-                        log_path = parts[1]  # /var/local/enhance/webserver_logs/UUID.log
-                        log_format = parts[2].rstrip(';')  # format_name
-                        uuid = log_path.split('/')[-1].replace('.log', '')  # Extract UUID
-                        new_lines.append(f"{base_indent}access_log /var/log/nginx/{uuid}.log {log_format};\n")
-                        persistent_log_added = True
-                except:
-                    new_lines.append(line)
-            
-            else:
-                new_lines.append(line)
-        
-        # Write changes back to file
-        try:
-            with open(conf_file, 'w') as f:
-                f.writelines(new_lines)
-            modified_files.append(f"{filename} (persistent logging)")
-        except Exception as e:
-            log_message(f"ERROR: Failed to write {conf_file}: {e}", True)
-            continue
-    
-    # Log changes
-    if modified_files:
-        action = "enabled" if persistent_logging_enabled else "disabled"
-        for file_info in modified_files:
-            log_message(f"persistent_logging: {action} - updated {file_info}")
-        return True
-    
-    return False
-
-def apply_real_ip_logging(config, mode="check"):
-    """Apply real IP logging configuration to all configs"""
-    features = config.get('features', {})
     real_ip_logging_enabled = features.get('real_ip_logging', False)
     
     # Process all conf files
@@ -914,7 +774,7 @@ def apply_real_ip_logging(config, mode="check"):
         if filename.startswith('000-'):
             continue
         
-        # Skip default.conf (real IP logging only applies to site configs)
+        # Skip default.conf (logging features only apply to site configs)
         if filename == "default.conf":
             continue
         
@@ -927,19 +787,28 @@ def apply_real_ip_logging(config, mode="check"):
             continue
         
         # Check current state
+        has_persistent_log = False
+        has_persistent_log_format = False
         has_real_ip_map = False
-        has_real_ip_log_format = False
+        has_real_ip_in_original_format = False
         
         for line in lines:
             stripped = line.strip()
-            if 'map $http_cf_connecting_ip $actual_addr' in stripped:
+            if 'access_log /var/log/nginx/' in stripped:
+                has_persistent_log = True
+            elif 'log_format' in stripped and '_persistent' in stripped:
+                has_persistent_log_format = True
+            elif 'map $http_cf_connecting_ip $actual_addr' in stripped:
                 has_real_ip_map = True
-            elif 'log_format' in stripped and '$actual_addr' in stripped:
-                has_real_ip_log_format = True
+            elif 'log_format' in stripped and '$actual_addr' in stripped and '_persistent' not in stripped:
+                has_real_ip_in_original_format = True
         
         # Check if changes are needed
-        current_has_real_ip = has_real_ip_map and has_real_ip_log_format
-        if current_has_real_ip != real_ip_logging_enabled:
+        current_persistent_state = has_persistent_log and has_persistent_log_format
+        current_real_ip_state = has_real_ip_map and has_real_ip_in_original_format
+        
+        if (current_persistent_state != persistent_logging_enabled or 
+            current_real_ip_state != real_ip_logging_enabled):
             changes_needed = True
             if mode == "check":
                 break  # No need to check further files in check mode
@@ -960,7 +829,7 @@ def apply_real_ip_logging(config, mode="check"):
         if filename.startswith('000-'):
             continue
         
-        # Skip default.conf (real IP logging only applies to site configs)
+        # Skip default.conf (logging features only apply to site configs)
         if filename == "default.conf":
             continue
         
@@ -972,36 +841,56 @@ def apply_real_ip_logging(config, mode="check"):
             continue
         
         # Check current state
+        has_persistent_log = False
+        has_persistent_log_format = False
         has_real_ip_map = False
-        has_real_ip_log_format = False
+        has_real_ip_in_original_format = False
         
         for line in lines:
             stripped = line.strip()
-            if 'map $http_cf_connecting_ip $actual_addr' in stripped:
+            if 'access_log /var/log/nginx/' in stripped:
+                has_persistent_log = True
+            elif 'log_format' in stripped and '_persistent' in stripped:
+                has_persistent_log_format = True
+            elif 'map $http_cf_connecting_ip $actual_addr' in stripped:
                 has_real_ip_map = True
-            elif 'log_format' in stripped and '$actual_addr' in stripped:
-                has_real_ip_log_format = True
+            elif 'log_format' in stripped and '$actual_addr' in stripped and '_persistent' not in stripped:
+                has_real_ip_in_original_format = True
         
         # Check if changes are needed
-        current_has_real_ip = has_real_ip_map and has_real_ip_log_format
-        real_ip_needs_change = current_has_real_ip != real_ip_logging_enabled
+        current_persistent_state = has_persistent_log and has_persistent_log_format
+        current_real_ip_state = has_real_ip_map and has_real_ip_in_original_format
         
-        if not real_ip_needs_change:
+        persistent_needs_change = current_persistent_state != persistent_logging_enabled
+        real_ip_needs_change = current_real_ip_state != real_ip_logging_enabled
+        
+        if not (persistent_needs_change or real_ip_needs_change):
             continue
         
         # Apply changes
         new_lines = []
         real_ip_map_added = False
+        persistent_log_added = False
+        persistent_log_format_added = False
         
         for i, line in enumerate(lines):
             stripped = line.strip()
+            base_indent = detect_indentation_safe(lines, i)
             
             # Remove existing real IP map line when disabled
             if not real_ip_logging_enabled and 'map $http_cf_connecting_ip $actual_addr' in stripped:
                 continue  # Skip the entire map line
             
-            # Update log_format line
-            elif 'log_format' in stripped:
+            # Remove existing persistent log directive when disabled
+            elif 'access_log /var/log/nginx/' in stripped and not persistent_logging_enabled:
+                continue
+            
+            # Remove existing persistent log format when disabled
+            elif 'log_format' in stripped and '_persistent' in stripped and not persistent_logging_enabled:
+                continue
+            
+            # Update original log_format line for real IP
+            elif 'log_format' in stripped and '_persistent' not in stripped:
                 if real_ip_logging_enabled and '$remote_addr' in stripped:
                     # Replace $remote_addr with $actual_addr
                     new_line = line.replace('$remote_addr', '$actual_addr')
@@ -1012,6 +901,20 @@ def apply_real_ip_logging(config, mode="check"):
                     new_lines.append(new_line)
                 else:
                     new_lines.append(line)
+                
+                # Add persistent log format after original log format
+                if (persistent_logging_enabled and not persistent_log_format_added 
+                    and not has_persistent_log_format):
+                    try:
+                        parts = stripped.split()
+                        if len(parts) >= 2:
+                            format_name = parts[1]  # sitename
+                            ip_var = '$actual_addr' if real_ip_logging_enabled else '$remote_addr'
+                            persistent_format = f'log_format {format_name}_persistent \'$time_local - {ip_var} - $http_cf_ipcountry - $server_protocol - $status - "$request_uri" - "$http_user_agent" - $request_time - $upstream_response_time\';'
+                            new_lines.append(f"{persistent_format}\n")
+                            persistent_log_format_added = True
+                    except:
+                        pass
             
             # Add real IP map before fastcgi_cache_path
             elif (stripped.startswith('fastcgi_cache_path') and real_ip_logging_enabled 
@@ -1021,6 +924,22 @@ def apply_real_ip_logging(config, mode="check"):
                 new_lines.append(line)
                 real_ip_map_added = True
             
+            # Add persistent log directive after enhance access_log
+            elif ('access_log /var/local/enhance/webserver_logs/' in stripped 
+                  and persistent_logging_enabled and not persistent_log_added):
+                new_lines.append(line)
+                # Extract UUID and determine log format from the enhance log line
+                try:
+                    parts = stripped.split()
+                    if len(parts) >= 3:
+                        log_path = parts[1]  # /var/local/enhance/webserver_logs/UUID.log
+                        log_format = parts[2].rstrip(';')  # format_name
+                        uuid = log_path.split('/')[-1].replace('.log', '')  # Extract UUID
+                        new_lines.append(f"{base_indent}access_log /var/log/nginx/{uuid}.log {log_format}_persistent;\n")
+                        persistent_log_added = True
+                except:
+                    new_lines.append(line)
+            
             else:
                 new_lines.append(line)
         
@@ -1028,16 +947,26 @@ def apply_real_ip_logging(config, mode="check"):
         try:
             with open(conf_file, 'w') as f:
                 f.writelines(new_lines)
-            modified_files.append(f"{filename} (real IP logging)")
+            
+            # Build change description
+            change_parts = []
+            if persistent_needs_change:
+                action = "enabled" if persistent_logging_enabled else "disabled"
+                change_parts.append(f"persistent logging {action}")
+            if real_ip_needs_change:
+                action = "enabled" if real_ip_logging_enabled else "disabled"
+                change_parts.append(f"real IP logging {action}")
+            
+            change_desc = ", ".join(change_parts)
+            modified_files.append(f"{filename} ({change_desc})")
         except Exception as e:
             log_message(f"ERROR: Failed to write {conf_file}: {e}", True)
             continue
     
     # Log changes
     if modified_files:
-        action = "enabled" if real_ip_logging_enabled else "disabled"
         for file_info in modified_files:
-            log_message(f"real_ip_logging: {action} - updated {file_info}")
+            log_message(f"logging_features: updated {file_info}")
         return True
     
     return False
@@ -1055,11 +984,10 @@ def main():
     http3_changes = apply_http3_enable(config, "check")
     quic_gso_changes = apply_quic_gso_enable(config, "check")
     include_changes = apply_include_features(config, "check")
-    persistent_logging_changes = apply_persistent_logging(config, "check")
-    real_ip_logging_changes = apply_real_ip_logging(config, "check")
+    logging_changes = apply_logging_features(config, "check")
     
     # If no changes needed, exit
-    if not (http3_changes or quic_gso_changes or include_changes or persistent_logging_changes or real_ip_logging_changes):
+    if not (http3_changes or quic_gso_changes or include_changes or logging_changes):
         log_message("Configuration check: All configs up to date")
         # Always run cleanup regardless of changes
         retention_days = config.get('backup_retention_days', 30)
@@ -1081,11 +1009,8 @@ def main():
     if include_changes:
         apply_include_features(config, "apply")
     
-    if persistent_logging_changes:
-        apply_persistent_logging(config, "apply")
-    
-    if real_ip_logging_changes:
-        apply_real_ip_logging(config, "apply")
+    if logging_changes:
+        apply_logging_features(config, "apply")
     
     # Test nginx configuration
     test_passed, test_output = test_nginx_config()
