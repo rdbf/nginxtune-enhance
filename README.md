@@ -10,7 +10,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 ## Objectives
 
-1. **Fix Enhance Nginx Issues**: Resolve minor configuration issues in Enhance's auto-generated nginx files
+1. **Fix Enhance Nginx Issues**: Resolve minor configuration issues in Enhance's auto-generated Nginx files
 2. **HTTP/3 Protocol Support**: Enable HTTP/3 with QUIC listeners and Alt-Svc headers
 3. **Centralized Security**: Implement modular security configurations across all websites on one server
 
@@ -25,7 +25,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 - **Listen Directives**: HTTP/2 and HTTP/3/QUIC listeners with proper IPv6 support
 - **Protocol Configuration**: http2 on, http3 on, and quic_gso directives
 - **HTTP/3 Compatibility**: Alt-Svc headers and FastCGI HTTP_HOST parameter
-- **Performance Optimization**: reuseport and QUIC GSO
+- **Performance Optimization**: reuseport and quic_gso
 - **Security Modules**: SSL configuration, server hardening, and CMS protection includes
 - **Logging Features**: Persistent logging and Cloudflare real IP detection
 
@@ -43,7 +43,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 ```
 /opt/nginxtune-enhance/
-├── nginxtune-enhance          # Main executable script (v0.3.5)
+├── nginxtune-enhance          # Main executable script
 ├── config.json                # Feature toggle configuration
 ├── debug_analysis.py          # Debug utility script
 └── overrides/                 # Modular security configurations
@@ -156,7 +156,7 @@ When the `persistent_logging` feature is enabled:
 
 - **Automatic Backups**: Creates timestamped backups before any changes
 - **Location**: `/etc/nginx/backups/YYYYMMDD_HHMMSS/`
-- **Validation**: Tests nginx configuration before applying changes
+- **Validation**: Tests Nginx configuration before applying changes
 - **Rollback**: Automatically restores from backup if validation fails
 - **Retention**: Configurable cleanup of old backups (default 30 days)
 
@@ -165,7 +165,7 @@ When the `persistent_logging` feature is enabled:
 **0.3.5** - Added persistent logging and Cloudflare real IP detection features  
 **0.3.4** - HTTP/3 and configuration fixes have been merged for cleaner logic  
 **0.3.3** - Backup retention management  
-**0.3.2** - Add FastCGI HTTP_HOST parameter for better HTTP3 compatibility with PHP  
+**0.3.2** - Add FastCGI HTTP_HOST parameter for better HTTP/3 compatibility with PHP  
 **0.3.1** - Separate QUIC GSO toggle, improved reuseport handling  
 **0.3.0** - Feature toggle system, modular overrides, targeted include management, performance optimizations  
 **0.2.0** - Unified add/remove logic, JSON configuration, improved state detection  
