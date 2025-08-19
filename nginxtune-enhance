@@ -909,7 +909,7 @@ def apply_logging_features(config, mode="check"):
                         if len(parts) >= 2:
                             format_name = parts[1]  # sitename
                             ip_var = '$actual_addr' if real_ip_logging_enabled else '$remote_addr'
-                            persistent_format = f'log_format {format_name}_persistent \'$time_local - {ip_var} - $http_cf_ipcountry - $server_protocol - $status - "$request_uri" - "$http_user_agent" - $request_time - $upstream_response_time\';'
+                            persistent_format = f'log_format {format_name}_persistent \'$time_local - {ip_var} - $http_cf_ipcountry - $server_protocol - $status - "$request_uri" - "$http_user_agent" - $upstream_cache_status - $request_time - $upstream_response_time\';'
                             new_lines.append(f"{persistent_format}\n")
                             persistent_log_format_added = True
                     except:
