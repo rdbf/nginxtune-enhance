@@ -356,6 +356,10 @@ def apply_http3_enable(config, mode="check"):
                 elif f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line:
                     continue
                 
+                # Remove existing FastCGI HTTP_HOST parameter
+                elif 'fastcgi_param HTTP_HOST $host;' in line:
+                    continue
+                
                 # Insert target listeners after server block opening
                 elif 'server {' in line and not listeners_added:
                     new_lines.append(line)
