@@ -263,7 +263,7 @@ def apply_http3_enable(config, mode="check"):
                     'listen [::]:443 quic'
                 ]
                 target_directives = ['http2 on', 'http3 on']
-                target_server_headers = [f"add_header Alt-Svc '{ALT_SVC_HEADER}'", 'fastcgi_param HTTP_HOST $host']
+                target_server_headers = [f"add_header Alt-Svc '{ALT_SVC_HEADER}'"]
                 # Only set PHP additions if PHP location blocks exist
                 if has_php_location:
                     target_php_additions = [f"add_header Alt-Svc '{ALT_SVC_HEADER}'", 'fastcgi_param HTTP_HOST $host']
@@ -301,9 +301,6 @@ def apply_http3_enable(config, mode="check"):
             
             # Extract current server-level headers
             elif f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line and not in_php_block and not is_default:
-                current_server_headers.append(stripped.rstrip(';'))
-            
-            elif 'fastcgi_param HTTP_HOST $host;' in line and not in_php_block and not is_default:
                 current_server_headers.append(stripped.rstrip(';'))
             
             # Extract current PHP-specific settings
@@ -357,10 +354,6 @@ def apply_http3_enable(config, mode="check"):
                 
                 # Remove existing Alt-Svc headers
                 elif f"add_header Alt-Svc '{ALT_SVC_HEADER}'" in line:
-                    continue
-                
-                # Remove existing FastCGI HTTP_HOST parameter
-                elif 'fastcgi_param HTTP_HOST $host;' in line:
                     continue
                 
                 # Insert target listeners after server block opening
