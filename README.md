@@ -152,6 +152,24 @@ When the `persistent_logging` feature is enabled:
 - Uses a modified log format with additional fields
 - Real visitor IPs are logged when `real_ip_logging` is enabled (extracts Cloudflare visitor IPs instead of edge server IPs)
 
+### Log Rotation
+When rotating the logs with Logrotate is desired, create a file called `/etc/logrotate.d/nginx` and add the following lines:
+```
+/var/log/nginx/*.log
+{
+   rotate 15
+   weekly
+   missingok
+   notifempty
+   compress
+   delaycompress
+   postrotate
+      nginx -s reopen
+   endscript
+}
+```
+With this logrotate-config, all files in `/var/log/nginx/` will be rotated and compressed weekly and will be retained for 15 weeks.
+
 ## Backup System
 
 - **Automatic Backups**: Creates timestamped backups before any changes
