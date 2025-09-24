@@ -6,7 +6,7 @@
 
 ## Overview
 
-nginxtune-enhance is an automated configuration management tool for Enhance hosting environments that fixes Nginx configuration issues and provides HTTP/3 protocol optimization with centralized security management. The script uses feature toggles to manage configurations reversibly while maintaining compatibility with Enhance's auto-generated files. Future Enhance updates might break the functionality, although checks are in place to prevent this.
+nginxtune-enhance is an automated configuration management tool for Enhance hosting environments that fixes Nginx configuration issues and provides HTTP/3 protocol optimization with centralized security management. The script uses feature toggles to manage configurations reversibly while maintaining compatibility with Enhance's auto-generated files. Future Enhance updates might break the functionality, although checks are in place to prevent this. The script is compatible with all Enhance v12 releases, up to and including 12.11.0 with NodeJS support.
 
 ## Objectives
 
@@ -177,6 +177,10 @@ With this logrotate-config, all files in `/var/log/nginx/` will be rotated and c
 - **Validation**: Tests Nginx configuration before applying changes
 - **Rollback**: Automatically restores from backup if validation fails
 - **Retention**: Configurable cleanup of old backups (default 30 days)
+
+## Known Issues
+
+The CMS overrides, when applied on the control panel, can cause issues with the Enhance file manager. The CMS overrides can also prevent installations of ClientExec from completing automated version updates.
 
 ## Version History
 
