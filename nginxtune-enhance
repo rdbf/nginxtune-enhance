@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 """
-Version: 0.3.5
+Version: 0.3.6
 Author: rdbf
 
-HTTP/3 configuration management script for Enhance Nginx
-Provides unified add/remove logic for HTTP/3 and related features based on JSON configuration.
+Configuration management tool for Nginx used in Enhance hosting environments.
+Provides Nginx optimization (http3/quic), security hardening, persistent logging and FastCGI cache control.
 
 Features managed:
 - Listen Directives: HTTP/2 and HTTP/3/QUIC listeners with proper IPv6 support
@@ -14,6 +14,7 @@ Features managed:
 - Performance Optimization: reuseport and QUIC GSO
 - Security Modules: SSL configuration, server hardening, and CMS protection includes
 - Logging Features: Persistent logging and Cloudflare real IP detection
+- FastCGI Cache Management: Configurable inactive timeout and cache validity periods
 
 The script analyzes current configuration state, determines required changes,
 and applies modifications while preserving Enhance's formatting and structure.
@@ -25,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -48,7 +50,9 @@ def load_config():
                 'server_hardening': False,
                 'cms_protection': False,
                 'persistent_logging': False,
-                'real_ip_logging': False
+                'real_ip_logging': False,
+                'fastcgi_cache_inactive': '60m',
+                'fastcgi_cache_valid': '60m'
             },
             'backup_retention_days': 30
         }
@@ -967,6 +971,147 @@ def apply_logging_features(config, mode="check"):
     
     return False
 
+def apply_fastcgi_cache_settings(config, mode="check"):
+    """Apply FastCGI cache inactive and valid configuration to all website configs"""
+    features = config.get('features', {})
+    configured_inactive = features.get('fastcgi_cache_inactive', '60m')
+    configured_valid = features.get('fastcgi_cache_valid', '60m')
+    
+    # Get all conf files
+    try:
+        conf_files = list(Path(SITES_DIR).glob("*.conf"))
+    except Exception as e:
+        if mode == "apply":
+            log_message(f"ERROR: Failed to scan {SITES_DIR}: {e}", True)
+        return False
+    
+    if not conf_files:
+        return False
+    
+    changes_needed = False
+    
+    for conf_file in conf_files:
+        filename = conf_file.name
+        
+        # Skip system files with 000- prefix
+        if filename.startswith('000-'):
+            continue
+        
+        # Skip default.conf (fastcgi cache only applies to website configs)
+        if filename == "default.conf":
+            continue
+        
+        try:
+            with open(conf_file, 'r') as f:
+                lines = f.readlines()
+        except Exception as e:
+            if mode == "apply":
+                log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
+            continue
+        
+        # Find and parse current values
+        current_inactive_value = None
+        current_valid_value = None
+        
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('fastcgi_cache_path'):
+                # Extract inactive value from line like: inactive=60m
+                match = re.search(r'inactive=([^;\s]+)', line)
+                if match:
+                    current_inactive_value = match.group(1)
+            elif stripped.startswith('fastcgi_cache_valid'):
+                # Extract valid value from line like: fastcgi_cache_valid 60m;
+                match = re.search(r'fastcgi_cache_valid\s+([^;\s]+)', line)
+                if match:
+                    current_valid_value = match.group(1)
+        
+        # Compare current vs configured values
+        if ((current_inactive_value and current_inactive_value != configured_inactive) or
+            (current_valid_value and current_valid_value != configured_valid)):
+            changes_needed = True
+            if mode == "check":
+                break  # Early exit in check mode
+    
+    if mode == "check":
+        return changes_needed
+    
+    # Apply mode - make actual changes
+    if not changes_needed:
+        return False
+    
+    modified_files = []
+    
+    for conf_file in conf_files:
+        filename = conf_file.name
+        
+        # Skip system files with 000- prefix and default.conf
+        if filename.startswith('000-') or filename == "default.conf":
+            continue
+        
+        try:
+            with open(conf_file, 'r') as f:
+                lines = f.readlines()
+        except Exception as e:
+            log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
+            continue
+        
+        # Find current values for this file
+        current_inactive_value = None
+        current_valid_value = None
+        
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('fastcgi_cache_path'):
+                match = re.search(r'inactive=([^;\s]+)', line)
+                if match:
+                    current_inactive_value = match.group(1)
+            elif stripped.startswith('fastcgi_cache_valid'):
+                match = re.search(r'fastcgi_cache_valid\s+([^;\s]+)', line)
+                if match:
+                    current_valid_value = match.group(1)
+        
+        # Check if this file needs changes
+        inactive_needs_change = current_inactive_value and current_inactive_value != configured_inactive
+        valid_needs_change = current_valid_value and current_valid_value != configured_valid
+        
+        if not (inactive_needs_change or valid_needs_change):
+            continue
+        
+        # Apply changes to this file
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('fastcgi_cache_path') and inactive_needs_change:
+                # Replace the inactive value in the line
+                new_line = re.sub(r'inactive=[^;\s]+', f'inactive={configured_inactive}', line)
+                new_lines.append(new_line)
+            elif stripped.startswith('fastcgi_cache_valid') and valid_needs_change:
+                # Replace the valid value in the line
+                new_line = re.sub(r'fastcgi_cache_valid\s+[^;\s]+', f'fastcgi_cache_valid {configured_valid}', line)
+                new_lines.append(new_line)
+            else:
+                new_lines.append(line)
+        
+        # Write modified configuration
+        try:
+            with open(conf_file, 'w') as f:
+                f.writelines(new_lines)
+            
+            modified_files.append(filename)
+            
+        except Exception as e:
+            log_message(f"ERROR: Failed to write {conf_file}: {e}", True)
+            continue
+    
+    # Log results
+    if modified_files:
+        for filename in modified_files:
+            log_message(f"fastcgi_cache_settings: updated {filename} (fastcgi cache settings updated)")
+        return True
+    
+    return False
+
 def main():
     """Main execution function"""
     if os.geteuid() != 0:
@@ -981,9 +1126,10 @@ def main():
     quic_gso_changes = apply_quic_gso_enable(config, "check")
     include_changes = apply_include_features(config, "check")
     logging_changes = apply_logging_features(config, "check")
+    fastcgi_cache_changes = apply_fastcgi_cache_settings(config, "check")
     
     # Exit if no changes needed
-    if not (http3_changes or quic_gso_changes or include_changes or logging_changes):
+    if not (http3_changes or quic_gso_changes or include_changes or logging_changes or fastcgi_cache_changes):
         log_message("Configuration check: All configs up to date")
         # Run cleanup regardless of changes
         retention_days = config.get('backup_retention_days', 30)
@@ -1008,6 +1154,9 @@ def main():
     if logging_changes:
         apply_logging_features(config, "apply")
     
+    if fastcgi_cache_changes:
+        apply_fastcgi_cache_settings(config, "apply")
+
     # Test nginx configuration
     test_passed, test_output = test_nginx_config()
     if not test_passed:

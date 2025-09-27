@@ -1,6 +1,6 @@
 # nginxtune-enhance
 
-**Version:** 0.3.5  
+**Version:** 0.3.6  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
@@ -13,6 +13,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 1. **Fix Enhance Nginx Issues**: Resolve minor configuration issues in Enhance's auto-generated Nginx files
 2. **HTTP/3 Protocol Support**: Enable HTTP/3 with QUIC listeners and Alt-Svc headers
 3. **Centralized Security**: Implement modular security configurations across all websites on one server
+4. **Quality of Life Modifications**: Persistent logging and FastCGI cache management
 
 ## Features
 
@@ -25,7 +26,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 - **Listen Directives**: HTTP/2 and HTTP/3/QUIC listeners with proper IPv6 support
 - **Protocol Configuration**: http2 on, http3 on, and quic_gso directives
 - **HTTP/3 Compatibility**: Alt-Svc headers and FastCGI HTTP_HOST parameter
-- **Performance Optimization**: reuseport and quic_gso
+- **Performance Optimization**: reuseport, quic_gso, and FastCGI cache management
 - **Security Modules**: SSL configuration, server hardening, and CMS protection includes
 - **Logging Features**: Persistent logging and Cloudflare real IP detection
 
@@ -54,7 +55,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 
 ## Configuration
 
-The `config.json` file controls all features through boolean toggles:
+The `config.json` file controls all features through feature toggles:
 
 - **http3_enable**: Enables full HTTP/3 support with QUIC listeners, Alt-Svc headers, and automatic configuration fixes
 - **quic_gso_enable**: Enables QUIC Generic Segmentation Offloading (requires http3_enable)
@@ -63,6 +64,8 @@ The `config.json` file controls all features through boolean toggles:
 - **cms_protection**: Enables WordPress and CMS-specific security protections
 - **persistent_logging**: Dual access logs (Enhance + persistent historical data)
 - **real_ip_logging**: Cloudflare real visitor IP detection instead of edge server IPs
+- **fastcgi_cache_inactive**: Configure FastCGI cache inactive timeout (default: 60m)
+- **fastcgi_cache_valid**: Configure FastCGI cache validity period (default: 60m)
 - **backup_retention_days**: Number of days to retain backup directories (default 30)
 
 ### Default Configuration
@@ -75,20 +78,22 @@ The `config.json` file controls all features through boolean toggles:
     "server_hardening": false,
     "cms_protection": false,
     "persistent_logging": false,
-    "real_ip_logging": false
+    "real_ip_logging": false,
+    "fastcgi_cache_inactive": "60m",
+    "fastcgi_cache_valid": "60m"
   },
   "backup_retention_days": 30
 }
 ```
 
-All features are disabled by default.
+All features are disabled by default, with FastCGI cache values set to match Enhance's auto-generated defaults.
 
 ## Installation and Usage
 
 ### Requirements
 - Root access required
 - Enhance hosting environment
-- Nginx with HTTP/3 support compiled in
+- Nginx with HTTP/3 support compiled in (current Enhance Nginx version 1.26.3 has this)
 
 ### Quick Install
 ```bash
@@ -184,6 +189,7 @@ The CMS overrides, when applied on the control panel, can cause issues with the 
 
 ## Version History
 
+**0.3.6** - Added FastCGI cache management  
 **0.3.5** - Added persistent logging and Cloudflare real IP detection features  
 **0.3.4** - HTTP/3 and configuration fixes have been merged for cleaner logic  
 **0.3.3** - Backup retention management  
