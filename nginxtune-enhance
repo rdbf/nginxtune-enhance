@@ -795,7 +795,8 @@ def apply_logging_features(config, mode="check"):
         
         for line in lines:
             stripped = line.strip()
-            if 'access_log /var/www/' in stripped and '/logs/webserver.log' in stripped:
+            if ('access_log /var/log/nginx/' in stripped or 
+                ('access_log /var/www/' in stripped and '/logs/webserver.log' in stripped)):
                 has_persistent_log = True
             elif 'log_format' in stripped and '_persistent' in stripped:
                 has_persistent_log_format = True
@@ -880,7 +881,8 @@ def apply_logging_features(config, mode="check"):
         
         for line in lines:
             stripped = line.strip()
-            if 'access_log /var/www/' in stripped and '/logs/webserver.log' in stripped:
+            if ('access_log /var/log/nginx/' in stripped or 
+                ('access_log /var/www/' in stripped and '/logs/webserver.log' in stripped)):
                 has_persistent_log = True
             elif 'log_format' in stripped and '_persistent' in stripped:
                 has_persistent_log_format = True
@@ -961,8 +963,10 @@ def apply_logging_features(config, mode="check"):
             if not real_ip_logging_enabled and 'map $http_cf_connecting_ip $actual_addr' in stripped:
                 continue
             
-            # Remove existing persistent log directive when disabled
-            elif 'access_log /var/www/' in stripped and '/logs/webserver.log' in stripped and not persistent_logging_enabled:
+            # Remove existing persistent log directive when disabled (both old and new paths)
+            elif (('access_log /var/log/nginx/' in stripped or 
+                   ('access_log /var/www/' in stripped and '/logs/webserver.log' in stripped)) 
+                  and not persistent_logging_enabled):
                 continue
             
             # Remove existing persistent log format when disabled
