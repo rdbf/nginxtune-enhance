@@ -1,12 +1,12 @@
 # nginxtune-enhance
 
-**Version:** 0.3.6  
+**Version:** 0.3.7  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
 ## Overview
 
-nginxtune-enhance is an automated configuration management tool for Enhance hosting environments that fixes Nginx configuration issues and provides HTTP/3 protocol optimization with centralized security management. The script uses feature toggles to manage configurations reversibly while maintaining compatibility with Enhance's auto-generated files. Future Enhance updates might break the functionality, although checks are in place to prevent this. The script is compatible with all Enhance v12 releases, up to and including 12.11.0 with NodeJS support.
+nginxtune-enhance is an automated configuration management tool for Enhance hosting environments that fixes Nginx configuration issues and provides HTTP/3 protocol optimization with centralized security management. The script uses feature toggles to manage configurations reversibly while maintaining compatibility with Enhance's auto-generated files. Future Enhance updates might break the functionality, although checks are in place to prevent this. The script is compatible with all Enhance v12 releases, up to and including 12.11.3 with NodeJS support.
 
 ## Objectives
 
@@ -153,14 +153,14 @@ All operations are logged to `/var/log/nginxtune-enhance.log` with timestamps:
 
 ### Persistent Logging
 When the `persistent_logging` feature is enabled:
-- Access logs are duplicated to `/var/log/nginx/<UUID>.log` (survives Enhance configuration reloads)
+- Access logs are also created at `/var/www/<UUID>/logs/webserver.log`
 - Uses a modified log format with additional fields
 - Real visitor IPs are logged when `real_ip_logging` is enabled (extracts Cloudflare visitor IPs instead of edge server IPs)
 
 ### Log Rotation
 When rotating the logs with Logrotate is desired, create a file called `/etc/logrotate.d/nginx` and add the following lines:
 ```
-/var/log/nginx/*.log
+/var/www/*/logs/webserver.log
 {
    rotate 15
    weekly
@@ -173,7 +173,7 @@ When rotating the logs with Logrotate is desired, create a file called `/etc/log
    endscript
 }
 ```
-With this logrotate-config, all files in `/var/log/nginx/` will be rotated and compressed weekly and will be retained for 15 weeks.
+With this logrotate-config, all files in `/var/www/*/logs/` will be rotated and compressed weekly and will be retained for 15 weeks.
 
 ## Backup System
 
@@ -189,6 +189,7 @@ The CMS overrides, when applied on the control panel, can cause issues with the 
 
 ## Version History
 
+**0.3.7** - Persistent logs now written to user folders.  
 **0.3.6** - Added FastCGI cache management  
 **0.3.5** - Added persistent logging and Cloudflare real IP detection features  
 **0.3.4** - HTTP/3 and configuration fixes have been merged for cleaner logic  

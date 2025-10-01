@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Version: 0.3.6
+Version: 0.3.7
 Author: rdbf
 
 Configuration management tool for Nginx used in Enhance hosting environments.
@@ -13,7 +13,7 @@ Features managed:
 - HTTP/3 Compatibility: Alt-Svc headers and FastCGI HTTP_HOST parameter
 - Performance Optimization: reuseport and QUIC GSO
 - Security Modules: SSL configuration, server hardening, and CMS protection includes
-- Logging Features: Persistent logging and Cloudflare real IP detection
+- Logging Features: Persistent logging in user folders and Cloudflare real IP detection
 - FastCGI Cache Management: Configurable inactive timeout and cache validity periods
 
 The script analyzes current configuration state, determines required changes,
@@ -791,10 +791,11 @@ def apply_logging_features(config, mode="check"):
         has_persistent_log_format = False
         has_real_ip_map = False
         has_real_ip_in_original_format = False
+        uuid_for_check = None
         
         for line in lines:
             stripped = line.strip()
-            if 'access_log /var/log/nginx/' in stripped:
+            if 'access_log /var/www/' in stripped and '/logs/webserver.log' in stripped:
                 has_persistent_log = True
             elif 'log_format' in stripped and '_persistent' in stripped:
                 has_persistent_log_format = True
@@ -802,16 +803,46 @@ def apply_logging_features(config, mode="check"):
                 has_real_ip_map = True
             elif 'log_format' in stripped and '$actual_addr' in stripped and '_persistent' not in stripped:
                 has_real_ip_in_original_format = True
+            elif 'access_log /var/local/enhance/webserver_logs/' in stripped:
+                try:
+                    parts = stripped.split()
+                    if len(parts) >= 3:
+                        log_path = parts[1]
+                        uuid_for_check = log_path.split('/')[-1].replace('.log', '')
+                except:
+                    pass
+        
+        # Check if directory/ownership work is needed
+        needs_directory_creation = False
+        needs_ownership_fix = False
+        if uuid_for_check and persistent_logging_enabled:
+            logs_dir = f"/var/www/{uuid_for_check}/logs"
+            log_file = f"{logs_dir}/webserver.log"
+            
+            if not os.path.exists(logs_dir):
+                needs_directory_creation = True
+            
+            if os.path.exists(log_file):
+                try:
+                    file_stat = os.stat(log_file)
+                    parent_stat = os.stat(f"/var/www/{uuid_for_check}")
+                    
+                    if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
+                        needs_ownership_fix = True
+                except:
+                    pass
         
         # Determine if changes needed
         current_persistent_state = has_persistent_log and has_persistent_log_format
         current_real_ip_state = has_real_ip_map and has_real_ip_in_original_format
         
         if (current_persistent_state != persistent_logging_enabled or 
-            current_real_ip_state != real_ip_logging_enabled):
+            current_real_ip_state != real_ip_logging_enabled or
+            needs_directory_creation or
+            needs_ownership_fix):
             changes_needed = True
             if mode == "check":
-                break  # Early exit in check mode
+                break
     
     if mode == "check":
         return changes_needed
@@ -845,10 +876,11 @@ def apply_logging_features(config, mode="check"):
         has_persistent_log_format = False
         has_real_ip_map = False
         has_real_ip_in_original_format = False
+        uuid_for_ownership = None
         
         for line in lines:
             stripped = line.strip()
-            if 'access_log /var/log/nginx/' in stripped:
+            if 'access_log /var/www/' in stripped and '/logs/webserver.log' in stripped:
                 has_persistent_log = True
             elif 'log_format' in stripped and '_persistent' in stripped:
                 has_persistent_log_format = True
@@ -856,6 +888,14 @@ def apply_logging_features(config, mode="check"):
                 has_real_ip_map = True
             elif 'log_format' in stripped and '$actual_addr' in stripped and '_persistent' not in stripped:
                 has_real_ip_in_original_format = True
+            elif 'access_log /var/local/enhance/webserver_logs/' in stripped:
+                try:
+                    parts = stripped.split()
+                    if len(parts) >= 3:
+                        log_path = parts[1]
+                        uuid_for_ownership = log_path.split('/')[-1].replace('.log', '')
+                except:
+                    pass
         
         # Determine if changes needed
         current_persistent_state = has_persistent_log and has_persistent_log_format
@@ -863,6 +903,46 @@ def apply_logging_features(config, mode="check"):
         
         persistent_needs_change = current_persistent_state != persistent_logging_enabled
         real_ip_needs_change = current_real_ip_state != real_ip_logging_enabled
+        
+        # Check if ownership needs fixing
+        needs_ownership_fix = False
+        if uuid_for_ownership and persistent_logging_enabled:
+            logs_dir = f"/var/www/{uuid_for_ownership}/logs"
+            log_file = f"{logs_dir}/webserver.log"
+            
+            if os.path.exists(log_file):
+                try:
+                    file_stat = os.stat(log_file)
+                    parent_stat = os.stat(f"/var/www/{uuid_for_ownership}")
+                    
+                    if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
+                        needs_ownership_fix = True
+                except:
+                    pass
+        
+        # Fix ownership before checking if config changes needed
+        if uuid_for_ownership and persistent_logging_enabled:
+            logs_dir = f"/var/www/{uuid_for_ownership}/logs"
+            log_file = f"{logs_dir}/webserver.log"
+            
+            if not os.path.exists(logs_dir):
+                try:
+                    os.makedirs(logs_dir, mode=0o755)
+                    parent_stat = os.stat(f"/var/www/{uuid_for_ownership}")
+                    os.chown(logs_dir, parent_stat.st_uid, parent_stat.st_gid)
+                except Exception as e:
+                    log_message(f"ERROR: Failed to create logs directory for {uuid_for_ownership}: {e}", True)
+            
+            if os.path.exists(log_file):
+                try:
+                    file_stat = os.stat(log_file)
+                    parent_stat = os.stat(f"/var/www/{uuid_for_ownership}")
+                    
+                    if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
+                        os.chown(log_file, parent_stat.st_uid, parent_stat.st_gid)
+                        os.chmod(log_file, 0o644)
+                except Exception as e:
+                    log_message(f"ERROR: Failed to fix log file ownership for {uuid_for_ownership}: {e}", True)
         
         if not (persistent_needs_change or real_ip_needs_change):
             continue
@@ -879,10 +959,10 @@ def apply_logging_features(config, mode="check"):
             
             # Remove real IP map when disabled
             if not real_ip_logging_enabled and 'map $http_cf_connecting_ip $actual_addr' in stripped:
-                continue  # Skip the entire map line
+                continue
             
             # Remove existing persistent log directive when disabled
-            elif 'access_log /var/log/nginx/' in stripped and not persistent_logging_enabled:
+            elif 'access_log /var/www/' in stripped and '/logs/webserver.log' in stripped and not persistent_logging_enabled:
                 continue
             
             # Remove existing persistent log format when disabled
@@ -892,11 +972,9 @@ def apply_logging_features(config, mode="check"):
             # Update original log_format line for real IP
             elif 'log_format' in stripped and '_persistent' not in stripped:
                 if real_ip_logging_enabled and '$remote_addr' in stripped:
-                    # Replace $remote_addr with $actual_addr
                     new_line = line.replace('$remote_addr', '$actual_addr')
                     new_lines.append(new_line)
                 elif not real_ip_logging_enabled and '$actual_addr' in stripped:
-                    # Replace $actual_addr with $remote_addr
                     new_line = line.replace('$actual_addr', '$remote_addr')
                     new_lines.append(new_line)
                 else:
@@ -908,8 +986,7 @@ def apply_logging_features(config, mode="check"):
                     try:
                         parts = stripped.split()
                         if len(parts) >= 2:
-                            format_name = parts[1]  # sitename
-                            ip_var = '$actual_addr' if real_ip_logging_enabled else '$remote_addr'
+                            format_name = parts[1]
                             persistent_format = f'log_format {format_name}_persistent \'$time_local - $actual_addr - $http_cf_ipcountry - $server_protocol - $status - $request_method - $host - $request_uri - $http_user_agent - $upstream_cache_status - $request_time - $upstream_response_time\';'
                             new_lines.append(f"{persistent_format}\n")
                             persistent_log_format_added = True
@@ -919,7 +996,6 @@ def apply_logging_features(config, mode="check"):
             # Insert real IP map before fastcgi_cache_path
             elif (stripped.startswith('fastcgi_cache_path') and real_ip_logging_enabled 
                   and not real_ip_map_added and not has_real_ip_map):
-                # Insert single-line map directive before fastcgi_cache_path
                 new_lines.append('map $http_cf_connecting_ip $actual_addr { default $http_cf_connecting_ip; "" $remote_addr; }\n')
                 new_lines.append(line)
                 real_ip_map_added = True
@@ -928,14 +1004,36 @@ def apply_logging_features(config, mode="check"):
             elif ('access_log /var/local/enhance/webserver_logs/' in stripped 
                   and persistent_logging_enabled and not persistent_log_added):
                 new_lines.append(line)
-                # Extract UUID and format from enhance log line
                 try:
                     parts = stripped.split()
                     if len(parts) >= 3:
                         log_path = parts[1]
                         log_format = parts[2].rstrip(';')
                         uuid = log_path.split('/')[-1].replace('.log', '')
-                        new_lines.append(f"{base_indent}access_log /var/log/nginx/{uuid}.log {log_format}_persistent;\n")
+                        
+                        logs_dir = f"/var/www/{uuid}/logs"
+                        log_file = f"{logs_dir}/webserver.log"
+                        
+                        if not os.path.exists(logs_dir):
+                            try:
+                                os.makedirs(logs_dir, mode=0o755)
+                                parent_stat = os.stat(f"/var/www/{uuid}")
+                                os.chown(logs_dir, parent_stat.st_uid, parent_stat.st_gid)
+                            except Exception as e:
+                                log_message(f"ERROR: Failed to create logs directory for {uuid}: {e}", True)
+                        
+                        if os.path.exists(log_file):
+                            try:
+                                file_stat = os.stat(log_file)
+                                parent_stat = os.stat(f"/var/www/{uuid}")
+                                
+                                if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
+                                    os.chown(log_file, parent_stat.st_uid, parent_stat.st_gid)
+                                    os.chmod(log_file, 0o644)
+                            except Exception as e:
+                                log_message(f"ERROR: Failed to fix log file ownership for {uuid}: {e}", True)
+                        
+                        new_lines.append(f"{base_indent}access_log /var/www/{uuid}/logs/webserver.log {log_format}_persistent;\n")
                         persistent_log_added = True
                 except:
                     new_lines.append(line)
