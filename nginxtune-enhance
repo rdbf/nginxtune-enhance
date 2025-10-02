@@ -818,18 +818,22 @@ def apply_logging_features(config, mode="check"):
         needs_ownership_fix = False
         if uuid_for_check and persistent_logging_enabled:
             logs_dir = f"/var/www/{uuid_for_check}/logs"
-            log_file = f"{logs_dir}/webserver.log"
             
             if not os.path.exists(logs_dir):
                 needs_directory_creation = True
             
-            if os.path.exists(log_file):
+            if os.path.exists(logs_dir):
                 try:
-                    file_stat = os.stat(log_file)
                     parent_stat = os.stat(f"/var/www/{uuid_for_check}")
                     
-                    if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
-                        needs_ownership_fix = True
+                    for log_file in os.listdir(logs_dir):
+                        log_file_path = os.path.join(logs_dir, log_file)
+                        if os.path.isfile(log_file_path):
+                            file_stat = os.stat(log_file_path)
+                            
+                            if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
+                                needs_ownership_fix = True
+                                break
                 except:
                     pass
         
@@ -910,22 +914,25 @@ def apply_logging_features(config, mode="check"):
         needs_ownership_fix = False
         if uuid_for_ownership and persistent_logging_enabled:
             logs_dir = f"/var/www/{uuid_for_ownership}/logs"
-            log_file = f"{logs_dir}/webserver.log"
             
-            if os.path.exists(log_file):
+            if os.path.exists(logs_dir):
                 try:
-                    file_stat = os.stat(log_file)
                     parent_stat = os.stat(f"/var/www/{uuid_for_ownership}")
                     
-                    if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
-                        needs_ownership_fix = True
+                    for log_file in os.listdir(logs_dir):
+                        log_file_path = os.path.join(logs_dir, log_file)
+                        if os.path.isfile(log_file_path):
+                            file_stat = os.stat(log_file_path)
+                            
+                            if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
+                                needs_ownership_fix = True
+                                break
                 except:
                     pass
         
         # Fix ownership before checking if config changes needed
         if uuid_for_ownership and persistent_logging_enabled:
             logs_dir = f"/var/www/{uuid_for_ownership}/logs"
-            log_file = f"{logs_dir}/webserver.log"
             
             if not os.path.exists(logs_dir):
                 try:
@@ -935,16 +942,21 @@ def apply_logging_features(config, mode="check"):
                 except Exception as e:
                     log_message(f"ERROR: Failed to create logs directory for {uuid_for_ownership}: {e}", True)
             
-            if os.path.exists(log_file):
+            # Fix ownership for all files in logs directory
+            if os.path.exists(logs_dir):
                 try:
-                    file_stat = os.stat(log_file)
                     parent_stat = os.stat(f"/var/www/{uuid_for_ownership}")
                     
-                    if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
-                        os.chown(log_file, parent_stat.st_uid, parent_stat.st_gid)
-                        os.chmod(log_file, 0o644)
+                    for log_file in os.listdir(logs_dir):
+                        log_file_path = os.path.join(logs_dir, log_file)
+                        if os.path.isfile(log_file_path):
+                            file_stat = os.stat(log_file_path)
+                            
+                            if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
+                                os.chown(log_file_path, parent_stat.st_uid, parent_stat.st_gid)
+                                os.chmod(log_file_path, 0o644)
                 except Exception as e:
-                    log_message(f"ERROR: Failed to fix log file ownership for {uuid_for_ownership}: {e}", True)
+                    log_message(f"ERROR: Failed to fix log files ownership for {uuid_for_ownership}: {e}", True)
         
         if not (persistent_needs_change or real_ip_needs_change):
             continue
@@ -1016,7 +1028,6 @@ def apply_logging_features(config, mode="check"):
                         uuid = log_path.split('/')[-1].replace('.log', '')
                         
                         logs_dir = f"/var/www/{uuid}/logs"
-                        log_file = f"{logs_dir}/webserver.log"
                         
                         if not os.path.exists(logs_dir):
                             try:
@@ -1026,16 +1037,21 @@ def apply_logging_features(config, mode="check"):
                             except Exception as e:
                                 log_message(f"ERROR: Failed to create logs directory for {uuid}: {e}", True)
                         
-                        if os.path.exists(log_file):
+                        # Fix ownership for all files in logs directory
+                        if os.path.exists(logs_dir):
                             try:
-                                file_stat = os.stat(log_file)
                                 parent_stat = os.stat(f"/var/www/{uuid}")
                                 
-                                if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
-                                    os.chown(log_file, parent_stat.st_uid, parent_stat.st_gid)
-                                    os.chmod(log_file, 0o644)
+                                for log_file in os.listdir(logs_dir):
+                                    log_file_path = os.path.join(logs_dir, log_file)
+                                    if os.path.isfile(log_file_path):
+                                        file_stat = os.stat(log_file_path)
+                                        
+                                        if file_stat.st_uid != parent_stat.st_uid or file_stat.st_gid != parent_stat.st_gid:
+                                            os.chown(log_file_path, parent_stat.st_uid, parent_stat.st_gid)
+                                            os.chmod(log_file_path, 0o644)
                             except Exception as e:
-                                log_message(f"ERROR: Failed to fix log file ownership for {uuid}: {e}", True)
+                                log_message(f"ERROR: Failed to fix log files ownership for {uuid}: {e}", True)
                         
                         new_lines.append(f"{base_indent}access_log /var/www/{uuid}/logs/webserver.log {log_format}_persistent;\n")
                         persistent_log_added = True
