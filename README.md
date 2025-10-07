@@ -188,7 +188,9 @@ With this logrotate-config, all files in `/var/www/*/logs/` will be rotated and 
 
 ## Known Issues
 
-The CMS overrides, when applied on the control panel, can cause issues with the Enhance file manager. The CMS overrides can also prevent installations of ClientExec from completing automated version updates.
+The CMS overrides, when applied on the control panel, can cause issues with the Enhance file manager. 
+The CMS overrides can also prevent installations of ClientExec from completing automated version updates.
+The Client Max Body Size for the Control Panel domain is set to 2000m by default instead of 200m, only use this script on the control panel when setting it sufficiently high.
 
 ## Version History
 
