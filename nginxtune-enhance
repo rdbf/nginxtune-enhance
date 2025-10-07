@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Version: 0.3.7
+Version: 0.3.8
 Author: rdbf
 
 Configuration management tool for Nginx used in Enhance hosting environments.
@@ -15,6 +15,7 @@ Features managed:
 - Security Modules: SSL configuration, server hardening, and CMS protection includes
 - Logging Features: Persistent logging in user folders and Cloudflare real IP detection
 - FastCGI Cache Management: Configurable inactive timeout and cache validity periods
+- Client Max Body Size: Change default Nginx client_max_body_size directive
 
 The script analyzes current configuration state, determines required changes,
 and applies modifications while preserving Enhance's formatting and structure.
@@ -52,7 +53,8 @@ def load_config():
                 'persistent_logging': False,
                 'real_ip_logging': False,
                 'fastcgi_cache_inactive': '60m',
-                'fastcgi_cache_valid': '60m'
+                'fastcgi_cache_valid': '60m',
+                'client_max_body_size': '200m'
             },
             'backup_retention_days': 30
         }
@@ -1230,6 +1232,127 @@ def apply_fastcgi_cache_settings(config, mode="check"):
     
     return False
 
+def apply_client_max_body_size(config, mode="check"):
+    """Apply client_max_body_size configuration to all website configs"""
+    features = config.get('features', {})
+    configured_size = features.get('client_max_body_size', '200m')
+    
+    # Get all conf files
+    try:
+        conf_files = list(Path(SITES_DIR).glob("*.conf"))
+    except Exception as e:
+        if mode == "apply":
+            log_message(f"ERROR: Failed to scan {SITES_DIR}: {e}", True)
+        return False
+    
+    if not conf_files:
+        return False
+    
+    changes_needed = False
+    
+    for conf_file in conf_files:
+        filename = conf_file.name
+        
+        # Skip system files with 000- prefix
+        if filename.startswith('000-'):
+            continue
+        
+        # Skip default.conf
+        if filename == "default.conf":
+            continue
+        
+        try:
+            with open(conf_file, 'r') as f:
+                lines = f.readlines()
+        except Exception as e:
+            if mode == "apply":
+                log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
+            continue
+        
+        # Find current value
+        current_size = None
+        
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('client_max_body_size'):
+                match = re.search(r'client_max_body_size\s+([^;\s]+)', line)
+                if match:
+                    current_size = match.group(1)
+                    break
+        
+        # Compare current vs configured value
+        if current_size and current_size != configured_size:
+            changes_needed = True
+            if mode == "check":
+                break
+    
+    if mode == "check":
+        return changes_needed
+    
+    # Apply mode - make actual changes
+    if not changes_needed:
+        return False
+    
+    modified_files = []
+    
+    for conf_file in conf_files:
+        filename = conf_file.name
+        
+        # Skip system files with 000- prefix and default.conf
+        if filename.startswith('000-') or filename == "default.conf":
+            continue
+        
+        try:
+            with open(conf_file, 'r') as f:
+                lines = f.readlines()
+        except Exception as e:
+            log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
+            continue
+        
+        # Find current value for this file
+        current_size = None
+        
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('client_max_body_size'):
+                match = re.search(r'client_max_body_size\s+([^;\s]+)', line)
+                if match:
+                    current_size = match.group(1)
+                    break
+        
+        # Check if this file needs changes
+        if not (current_size and current_size != configured_size):
+            continue
+        
+        # Apply changes to this file
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('client_max_body_size'):
+                new_line = re.sub(r'client_max_body_size\s+[^;\s]+', f'client_max_body_size {configured_size}', line)
+                new_lines.append(new_line)
+            else:
+                new_lines.append(line)
+        
+        # Write modified configuration
+        try:
+            with open(conf_file, 'w') as f:
+                f.writelines(new_lines)
+            
+            modified_files.append(filename)
+            
+        except Exception as e:
+            log_message(f"ERROR: Failed to write {conf_file}: {e}", True)
+            continue
+    
+    # Log results
+    if modified_files:
+        for filename in modified_files:
+            log_message(f"client_max_body_size: updated {filename} (set to {configured_size})")
+        return True
+    
+    return False
+
 def main():
     """Main execution function"""
     if os.geteuid() != 0:
@@ -1245,9 +1368,10 @@ def main():
     include_changes = apply_include_features(config, "check")
     logging_changes = apply_logging_features(config, "check")
     fastcgi_cache_changes = apply_fastcgi_cache_settings(config, "check")
+    body_size_changes = apply_client_max_body_size(config, "check")
     
     # Exit if no changes needed
-    if not (http3_changes or quic_gso_changes or include_changes or logging_changes or fastcgi_cache_changes):
+    if not (http3_changes or quic_gso_changes or include_changes or logging_changes or fastcgi_cache_changes or body_size_changes):
         log_message("Configuration check: All configs up to date")
         # Run cleanup regardless of changes
         retention_days = config.get('backup_retention_days', 30)
@@ -1274,6 +1398,9 @@ def main():
     
     if fastcgi_cache_changes:
         apply_fastcgi_cache_settings(config, "apply")
+    
+    if body_size_changes:
+        apply_client_max_body_size(config, "apply")
 
     # Test nginx configuration
     test_passed, test_output = test_nginx_config()

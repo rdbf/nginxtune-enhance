@@ -1,6 +1,6 @@
 # nginxtune-enhance
 
-**Version:** 0.3.7  
+**Version:** 0.3.8  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
@@ -13,7 +13,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 1. **Fix Enhance Nginx Issues**: Resolve minor configuration issues in Enhance's auto-generated Nginx files
 2. **HTTP/3 Protocol Support**: Enable HTTP/3 with QUIC listeners and Alt-Svc headers
 3. **Centralized Security**: Implement modular security configurations across all websites on one server
-4. **Quality of Life Modifications**: Persistent logging and FastCGI cache management
+4. **Quality of Life Modifications**: Persistent logging, FastCGI cache management and Client Max Body Size modification
 
 ## Features
 
@@ -29,6 +29,7 @@ nginxtune-enhance is an automated configuration management tool for Enhance host
 - **Performance Optimization**: reuseport, quic_gso, and FastCGI cache management
 - **Security Modules**: SSL configuration, server hardening, and CMS protection includes
 - **Logging Features**: Persistent logging and Cloudflare real IP detection
+- **Other Settings**: FastCGI cache management and Client Max Body Size modification
 
 ### Security Features
 - **SSL Configuration**: Modern TLS protocols and secure cipher suites
@@ -66,6 +67,7 @@ The `config.json` file controls all features through feature toggles:
 - **real_ip_logging**: Cloudflare real visitor IP detection instead of edge server IPs
 - **fastcgi_cache_inactive**: Configure FastCGI cache inactive timeout (default: 60m)
 - **fastcgi_cache_valid**: Configure FastCGI cache validity period (default: 60m)
+- **client_max_body_size**: Change the value for Client Max Body Size (default: 200m)
 - **backup_retention_days**: Number of days to retain backup directories (default 30)
 
 ### Default Configuration
@@ -80,13 +82,14 @@ The `config.json` file controls all features through feature toggles:
     "persistent_logging": false,
     "real_ip_logging": false,
     "fastcgi_cache_inactive": "60m",
-    "fastcgi_cache_valid": "60m"
+    "fastcgi_cache_valid": "60m",
+    "client_max_body_size": "200m"
   },
   "backup_retention_days": 30
 }
 ```
 
-All features are disabled by default, with FastCGI cache values set to match Enhance's auto-generated defaults.
+All features are disabled by default, with FastCGI cache and Client Max Body Size values set to match Enhance's auto-generated defaults.
 
 ## Installation and Usage
 
@@ -189,6 +192,7 @@ The CMS overrides, when applied on the control panel, can cause issues with the 
 
 ## Version History
 
+**0.3.8** - Modify Client Max Body Size.  
 **0.3.7** - Persistent logs now written to user folders.  
 **0.3.6** - Added FastCGI cache management  
 **0.3.5** - Added persistent logging and Cloudflare real IP detection features  
