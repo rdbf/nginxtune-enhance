@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Version: 0.3.8
+Version: 0.3.9
 Author: rdbf
 
 Configuration management tool for Nginx used in Enhance hosting environments.
@@ -1248,6 +1248,9 @@ def apply_client_max_body_size(config, mode="check"):
     if not conf_files:
         return False
     
+    # Check if this is a control panel server by looking for 000- files
+    is_control_panel_server = any(f.name.startswith('000-') for f in conf_files)
+    
     changes_needed = False
     
     for conf_file in conf_files:
@@ -1269,22 +1272,45 @@ def apply_client_max_body_size(config, mode="check"):
                 log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
             continue
         
-        # Find current value
-        current_size = None
+        # Check if this vhost serves the control panel UI
+        file_content = ''.join(lines)
+        is_control_panel_vhost = is_control_panel_server and 'root "/var/www/control-panel/ui"' in file_content
         
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('client_max_body_size'):
-                match = re.search(r'client_max_body_size\s+([^;\s]+)', line)
-                if match:
-                    current_size = match.group(1)
-                    break
-        
-        # Compare current vs configured value
-        if current_size and current_size != configured_size:
-            changes_needed = True
-            if mode == "check":
+        if is_control_panel_vhost:
+            # For control panel vhosts, check all directives are correct
+            in_location_block = False
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith('location ') and '{' in stripped:
+                    in_location_block = True
+                elif in_location_block and stripped == '}':
+                    in_location_block = False
+                elif stripped.startswith('client_max_body_size'):
+                    match = re.search(r'client_max_body_size\s+([^;\s]+)', line)
+                    if match:
+                        current = match.group(1)
+                        expected = '0' if in_location_block else '2000m'
+                        if current != expected:
+                            changes_needed = True
+                            if mode == "check":
+                                break
+            if mode == "check" and changes_needed:
                 break
+        else:
+            # For regular vhosts, use original logic
+            current_size = None
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith('client_max_body_size'):
+                    match = re.search(r'client_max_body_size\s+([^;\s]+)', line)
+                    if match:
+                        current_size = match.group(1)
+                        break
+            
+            if current_size and current_size != configured_size:
+                changes_needed = True
+                if mode == "check":
+                    break
     
     if mode == "check":
         return changes_needed
@@ -1293,7 +1319,7 @@ def apply_client_max_body_size(config, mode="check"):
     if not changes_needed:
         return False
     
-    modified_files = []
+    modified_files = []  # Will store tuples: (filename, is_control_panel_vhost)
     
     for conf_file in conf_files:
         filename = conf_file.name
@@ -1309,46 +1335,75 @@ def apply_client_max_body_size(config, mode="check"):
             log_message(f"ERROR: Failed to read {conf_file}: {e}", True)
             continue
         
-        # Find current value for this file
-        current_size = None
+        # Check if this vhost serves the control panel UI
+        file_content = ''.join(lines)
+        is_control_panel_vhost = is_control_panel_server and 'root "/var/www/control-panel/ui"' in file_content
         
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('client_max_body_size'):
-                match = re.search(r'client_max_body_size\s+([^;\s]+)', line)
-                if match:
-                    current_size = match.group(1)
-                    break
-        
-        # Check if this file needs changes
-        if not (current_size and current_size != configured_size):
-            continue
-        
-        # Apply changes to this file
-        new_lines = []
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('client_max_body_size'):
-                new_line = re.sub(r'client_max_body_size\s+[^;\s]+', f'client_max_body_size {configured_size}', line)
-                new_lines.append(new_line)
-            else:
-                new_lines.append(line)
-        
-        # Write modified configuration
-        try:
-            with open(conf_file, 'w') as f:
-                f.writelines(new_lines)
+        if is_control_panel_vhost:
+            # For control panel vhosts, apply context-aware values
+            new_lines = []
+            in_location_block = False
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith('location ') and '{' in stripped:
+                    in_location_block = True
+                elif in_location_block and stripped == '}':
+                    in_location_block = False
+                
+                if stripped.startswith('client_max_body_size'):
+                    target = '0' if in_location_block else '2000m'
+                    new_line = re.sub(r'client_max_body_size\s+[^;\s]+', f'client_max_body_size {target}', line)
+                    new_lines.append(new_line)
+                else:
+                    new_lines.append(line)
             
-            modified_files.append(filename)
+            # Write modified configuration
+            try:
+                with open(conf_file, 'w') as f:
+                    f.writelines(new_lines)
+                modified_files.append((filename, True))
+            except Exception as e:
+                log_message(f"ERROR: Failed to write {conf_file}: {e}", True)
+                continue
+        else:
+            # For regular vhosts, use original logic
+            current_size = None
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith('client_max_body_size'):
+                    match = re.search(r'client_max_body_size\s+([^;\s]+)', line)
+                    if match:
+                        current_size = match.group(1)
+                        break
             
-        except Exception as e:
-            log_message(f"ERROR: Failed to write {conf_file}: {e}", True)
-            continue
+            if not (current_size and current_size != configured_size):
+                continue
+            
+            new_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith('client_max_body_size'):
+                    new_line = re.sub(r'client_max_body_size\s+[^;\s]+', f'client_max_body_size {configured_size}', line)
+                    new_lines.append(new_line)
+                else:
+                    new_lines.append(line)
+            
+            # Write modified configuration
+            try:
+                with open(conf_file, 'w') as f:
+                    f.writelines(new_lines)
+                modified_files.append((filename, False))
+            except Exception as e:
+                log_message(f"ERROR: Failed to write {conf_file}: {e}", True)
+                continue
     
     # Log results
     if modified_files:
-        for filename in modified_files:
-            log_message(f"client_max_body_size: updated {filename} (set to {configured_size})")
+        for filename, is_cp in modified_files:
+            if is_cp:
+                log_message(f"client_max_body_size: updated {filename} (set to original values)")
+            else:
+                log_message(f"client_max_body_size: updated {filename} (set to {configured_size})")
         return True
     
     return False

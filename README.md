@@ -1,6 +1,6 @@
 # nginxtune-enhance
 
-**Version:** 0.3.8  
+**Version:** 0.3.9  
 **Location:** `/opt/nginxtune-enhance/`  
 **Author:** rdbf  
 
@@ -190,11 +190,11 @@ With this logrotate-config, all files in `/var/www/*/logs/` will be rotated and 
 
 The CMS overrides, when applied on the control panel, can cause issues with the Enhance file manager. 
 The CMS overrides can also prevent installations of ClientExec from completing automated version updates.
-The Client Max Body Size for the Control Panel domain is set to 2000m by default instead of 200m, only use this script on the control panel when setting it sufficiently high.
 
 ## Version History
 
-**0.3.8** - Modify Client Max Body Size.  
+**0.3.9** - Fix Control Panel domain Client Max Body Size to Enhance defaults.  
+**0.3.8** - Added option to modify Client Max Body Size.  
 **0.3.7** - Persistent logs now written to user folders.  
 **0.3.6** - Added FastCGI cache management  
 **0.3.5** - Added persistent logging and Cloudflare real IP detection features  
