@@ -6,7 +6,7 @@
 
 ## Overview
 
-nginxtune-enhance is an automated configuration management tool for Enhance hosting environments that fixes Nginx configuration issues and provides HTTP/3 protocol optimization with centralized security management. The script uses feature toggles to manage configurations reversibly while maintaining compatibility with Enhance's auto-generated files. Future Enhance updates might break the functionality, although checks are in place to prevent this. The script is compatible with all Enhance v12 releases, up to and including 12.11.3 with NodeJS support.
+nginxtune-enhance is an automated configuration management tool for Enhance hosting environments that fixes Nginx configuration issues and provides HTTP/3 protocol optimization with centralized security management. The script uses feature toggles to manage configurations reversibly while maintaining compatibility with Enhance's auto-generated files. Future Enhance updates might break the functionality, although checks are in place to prevent this. The script is compatible with all Enhance v12 releases, up to and including 12.11.9 with NodeJS support.
 
 ## Objectives
 
@@ -96,7 +96,7 @@ All features are disabled by default, with FastCGI cache and Client Max Body Siz
 ### Requirements
 - Root access required
 - Enhance hosting environment
-- Nginx with HTTP/3 support compiled in (current Enhance Nginx version 1.26.3 has this)
+- Nginx with HTTP/3 support compiled in (current Enhance Nginx version 1.28 has this)
 
 ### Quick Install
 ```bash
